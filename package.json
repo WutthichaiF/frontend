@@ -9,9 +9,16 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@armyc2.c5isr.renderer/mil-sym-ts-web": "^2.6.7",
+    "@mapbox/mapbox-gl-draw": "^1.5.1",
+    "@turf/turf": "^7.3.4",
+    "maplibre-gl": "^5.18.0",
+    "milsymbol": "^3.0.3",
     "next": "16.1.6",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "uuid": "^13.0.0",
+    "zustand": "^5.0.11"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

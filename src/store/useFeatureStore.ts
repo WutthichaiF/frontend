@@ -1,14 +1,22 @@
 import { create } from "zustand";
-import type { AppFeature } from "@/types/feature";
+import type { FeatureCollection } from "geojson";
 
-type State = {
-  features: AppFeature[];
-  addFeature: (f: AppFeature) => void;
+type FC = FeatureCollection;
+
+type FeatureState = {
+  tac: FC;
+  draw: FC;
+  setTac: (next: FC) => void;
+  setDraw: (next: FC) => void;
   clear: () => void;
 };
 
-export const useFeatureStore = create<State>((set) => ({
-  features: [],
-  addFeature: (f) => set((s) => ({ features: [...s.features, f] })),
-  clear: () => set({ features: [] }),
+const emptyFC: FC = { type: "FeatureCollection", features: [] };
+
+export const useFeatureStore = create<FeatureState>((set) => ({
+  tac: emptyFC,
+  draw: emptyFC,
+  setTac: (next) => set({ tac: next }),
+  setDraw: (next) => set({ draw: next }),
+  clear: () => set({ tac: emptyFC, draw: emptyFC }),
 }));

@@ -48,3 +48,4 @@ export async function renderSinglePointSVG(
     anchor: { x: svgInfo.getSymbolCenterX(), y: svgInfo.getSymbolCenterY() }, // :contentReference[oaicite:5]{index=5}
   };
 }
+

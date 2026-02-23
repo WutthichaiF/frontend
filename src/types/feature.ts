@@ -1,13 +1,21 @@
-export type GeoGeometry =
-  | { type: "Point"; coordinates: [number, number] }
-  | { type: "LineString"; coordinates: [number, number][] }
-  | { type: "Polygon"; coordinates: [number, number][][] };
+// types/feature.ts
+import type { Feature, Geometry } from "geojson";
 
-export type AppFeatureType = "symbol" | "line" | "polygon" | "arrow" | "sector";
+export type AppFeatureKind =
+  | "formation_unit"
+  | "commando_point"
+  | "task"
+  | "defensive"
+  | "area"
+  | "symbol";
 
-export type AppFeature = {
+export type AppFeatureProps = {
   id: string;
-  type: AppFeatureType;
-  geometry: GeoGeometry;
-  properties: Record<string, any>;
+  gkind: AppFeatureKind;   
+  iconId?: string;
+  iconSize?: number;
+  label?: string;
+  sidc?: string;
 };
+
+export type AppFeature = Feature<Geometry, AppFeatureProps>;

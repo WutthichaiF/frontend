@@ -1,3 +1,4 @@
+"use client";
 import MapContainer from "./MapContainer";
 
 export default function MapPage() {

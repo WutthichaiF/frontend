@@ -1,10 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useToolStore } from "@/store/useToolStore";
 import { useFeatureStore } from "@/store/useFeatureStore";
 import { sidcToSvg } from "@/lib/milsymbol";
-
+import {
+  MdAir,
+  MdAltRoute,
+  MdConstruction,
+  MdFavoriteBorder,
+  MdGroups,
+  MdPlace,
+} from "react-icons/md";
+import { FORMATION_GROUPS, FormationItem } from "./formations";
 type TopTab = "gallery" | "search";
 type CategoryTab =
   | "favorites"
@@ -43,33 +51,89 @@ const SECTION_LABEL: Record<SectionKey, string> = {
   capabilities: "Capabilities, Range",
 };
 
+/** ===== Non-tactical headings (ตามรูป) ===== */
+const FAVORITES_HEADINGS = [
+  "Favorite Symbols (1-Point)",
+  "Favorite Tactical Graphics",
+  "Recent used Symbols (1-Point)",
+  "Recent used Tactical Graphics",
+] as const;
+
+const FORMATIONS_HEADINGS = [
+  "Unit Symbols (empty)",
+  "Large Formations, Command and Control",
+  "Infantry, Tanks and Artillery",
+  "Aviation and Ground Based Air Defense",
+  "Engineer",
+  "Command, Transmission and EW",
+  "Logistics and Medical",
+  "Special Forces",
+] as const;
+
+const EQUIPMENT_HEADINGS = [
+  "Installations",
+  "Weapons",
+  "Aircraft",
+  "Drone (RPV / UAV)",
+  "Ground Vehicle",
+  "Sea Surface (Ships)",
+  "Subservice (Submarines)",
+] as const;
+
+const FUNCTION_HEADINGS = [
+  "Generic Graphics",
+  "Symbol with Emoji Support",
+  "Emergency Management Symbols (EMS)",
+  "Stability Operations (SO)",
+  "Mine Warfare (Bottom Descriptors)",
+] as const;
+
+const METOC_HEADINGS = [
+  "Atmosphere",
+  "Weather Symbols",
+  "Wind",
+  "Lines",
+  "Oceanic",
+  "Geophysics/Acoustics",
+  "State of the Ground",
+] as const;
+
+/** ===== Tactical content ที่มีอยู่แล้ว ===== */
 const BASE_DEPLOY_SYMBOLS = [
-  { label: "ATK", sidc: "SFGPUCI----K---" },
-  { label: "OBJ", sidc: "SFGPUCI----K---" },
-  { label: "AA", sidc: "SFGPUCI----K---" },
-  { label: "ASU", sidc: "SFGPUCI----K---" },
+  { label: "PBX", sidc: "GFPGOAP--------" },
+  { label: "ATK", sidc: "GFPGOAK--------" },
+  { label: "OBJ", sidc: "GFPGOAO--------" },
+  { label: "AA", sidc: "GFGPGAA--------" },
+  { label: "ASLT", sidc: "GFPGPOAA--------" },
 ];
 
-// ===== Tasks (แสดง thumbnail แบบ SVG) =====
 const TASKS = [
   {
     id: "WP" as const,
-    thumbSvg: `<svg viewBox="0 0 220 70" xmlns="http://www.w3.org/2000/svg">
+    thumbSvg: `<svg viewBox="0 0 220 70" xmlns="http://www.w3.org/2000/svg" stroke-linecap="round" stroke-linejoin="round">
       <rect x="6" y="6" width="208" height="58" rx="10" fill="white" stroke="#d1d5db"/>
-      <path d="M40 35 L150 35" stroke="#2f7fff" stroke-width="5" stroke-linecap="round"/>
-      <path d="M150 35 L138 27" stroke="#2f7fff" stroke-width="5" stroke-linecap="round"/>
-      <path d="M150 35 L138 43" stroke="#2f7fff" stroke-width="5" stroke-linecap="round"/>
-      <text x="88" y="29" font-size="18" font-weight="700" fill="#2f7fff">WP</text>
+      <path d="M52 35 L152 35" fill="none" stroke="#2f7fff" stroke-width="5"/>
+      <path d="M52 35 L66 27" fill="none" stroke="#2f7fff" stroke-width="5"/>
+      <path d="M52 35 L66 43" fill="none" stroke="#2f7fff" stroke-width="5"/>
+      <path d="M152 35 C 188 35, 190 10, 166 10 C 148 10, 148 26, 152 35" fill="none" stroke="#2f7fff" stroke-width="5"/>
+      <circle cx="52" cy="35" r="4.2" fill="#ff3b30" stroke="#fff" stroke-width="2"/>
+      <circle cx="152" cy="35" r="4.2" fill="#ff3b30" stroke="#fff" stroke-width="2"/>
+      <circle cx="166" cy="10" r="4.2" fill="#ff3b30" stroke="#fff" stroke-width="2"/>
+      <text x="110" y="30" text-anchor="middle" font-size="16" font-weight="800" fill="#2f7fff">WP</text>
     </svg>`,
   },
   {
     id: "R" as const,
-    thumbSvg: `<svg viewBox="0 0 220 70" xmlns="http://www.w3.org/2000/svg">
+    thumbSvg: `<svg viewBox="0 0 220 70" xmlns="http://www.w3.org/2000/svg" stroke-linecap="round" stroke-linejoin="round">
       <rect x="6" y="6" width="208" height="58" rx="10" fill="white" stroke="#d1d5db"/>
-      <path d="M40 35 L150 35" stroke="#7a1b6d" stroke-width="5" stroke-linecap="round"/>
-      <path d="M150 35 L138 27" stroke="#7a1b6d" stroke-width="5" stroke-linecap="round"/>
-      <path d="M150 35 L138 43" stroke="#7a1b6d" stroke-width="5" stroke-linecap="round"/>
-      <text x="98" y="29" font-size="18" font-weight="700" fill="#7a1b6d">R</text>
+      <path d="M52 35 L152 35" fill="none" stroke="#7a1b6d" stroke-width="5"/>
+      <path d="M52 35 L66 27" fill="none" stroke="#7a1b6d" stroke-width="5"/>
+      <path d="M52 35 L66 43" fill="none" stroke="#7a1b6d" stroke-width="5"/>
+      <path d="M152 35 C 188 35, 190 10, 166 10 C 148 10, 148 26, 152 35" fill="none" stroke="#7a1b6d" stroke-width="5"/>
+      <circle cx="52" cy="35" r="4.2" fill="#ff3b30" stroke="#fff" stroke-width="2"/>
+      <circle cx="152" cy="35" r="4.2" fill="#ff3b30" stroke="#fff" stroke-width="2"/>
+      <circle cx="166" cy="10" r="4.2" fill="#ff3b30" stroke="#fff" stroke-width="2"/>
+      <text x="110" y="30" text-anchor="middle" font-size="16" font-weight="800" fill="#7a1b6d">R</text>
     </svg>`,
   },
   {
@@ -84,7 +148,6 @@ const TASKS = [
   },
 ];
 
-// ===== Defensive Lines =====
 const DEFENSIVE = [
   {
     id: "xline" as const,
@@ -92,11 +155,13 @@ const DEFENSIVE = [
     thumbSvg: `<svg viewBox="0 0 220 70" xmlns="http://www.w3.org/2000/svg">
       <rect x="6" y="6" width="208" height="58" rx="10" fill="white" stroke="#d1d5db"/>
       <path d="M30 35 L190 35" stroke="#7a1b6d" stroke-width="5" stroke-linecap="round"/>
-      ${Array.from({ length: 8 }).map((_,i)=>{
-        const x=45+i*18;
-        return `<path d="M${x-6} 28 L${x+6} 42" stroke="#7a1b6d" stroke-width="4"/>
-                <path d="M${x-6} 42 L${x+6} 28" stroke="#7a1b6d" stroke-width="4"/>`;
-      }).join("")}
+      ${Array.from({ length: 8 })
+        .map((_, i) => {
+          const x = 45 + i * 18;
+          return `<path d="M${x - 6} 28 L${x + 6} 42" stroke="#7a1b6d" stroke-width="4"/>
+                <path d="M${x - 6} 42 L${x + 6} 28" stroke="#7a1b6d" stroke-width="4"/>`;
+        })
+        .join("")}
     </svg>`,
   },
   {
@@ -105,10 +170,12 @@ const DEFENSIVE = [
     thumbSvg: `<svg viewBox="0 0 220 70" xmlns="http://www.w3.org/2000/svg">
       <rect x="6" y="6" width="208" height="58" rx="10" fill="white" stroke="#d1d5db"/>
       <path d="M30 35 L190 35" stroke="#7a1b6d" stroke-width="5" stroke-linecap="round"/>
-      ${Array.from({ length: 9 }).map((_,i)=>{
-        const x=45+i*18;
-        return `<path d="M${x} 20 L${x} 32" stroke="#7a1b6d" stroke-width="4"/>`;
-      }).join("")}
+      ${Array.from({ length: 9 })
+        .map((_, i) => {
+          const x = 45 + i * 18;
+          return `<path d="M${x} 20 L${x} 32" stroke="#7a1b6d" stroke-width="4"/>`;
+        })
+        .join("")}
     </svg>`,
   },
   {
@@ -117,10 +184,12 @@ const DEFENSIVE = [
     thumbSvg: `<svg viewBox="0 0 220 70" xmlns="http://www.w3.org/2000/svg">
       <rect x="6" y="6" width="208" height="58" rx="10" fill="white" stroke="#d1d5db"/>
       <path d="M30 40 L190 40" stroke="#7a1b6d" stroke-width="5" stroke-linecap="round"/>
-      ${Array.from({ length: 9 }).map((_,i)=>{
-        const x=42+i*18;
-        return `<path d="M${x} 40 L${x+9} 25 L${x+18} 40 Z" fill="#7a1b6d"/>`;
-      }).join("")}
+      ${Array.from({ length: 9 })
+        .map((_, i) => {
+          const x = 42 + i * 18;
+          return `<path d="M${x} 40 L${x + 9} 25 L${x + 18} 40 Z" fill="#7a1b6d"/>`;
+        })
+        .join("")}
     </svg>`,
   },
   {
@@ -132,6 +201,82 @@ const DEFENSIVE = [
     </svg>`,
   },
 ];
+
+const COMMANDO_POINTS = [
+  {
+    id: "cmd-square-pole",
+    label: "Square",
+    thumbSvg: `<svg viewBox="0 0 120 90" xmlns="http://www.w3.org/2000/svg">
+      <rect x="46" y="14" width="28" height="28" fill="none" stroke="#2f7fff" stroke-width="3"/>
+      <path d="M60 42 L60 78" stroke="#2f7fff" stroke-width="3" stroke-linecap="round"/>
+    </svg>`,
+  },
+  {
+    id: "cmd-circle-x",
+    label: "CircleX",
+    thumbSvg: `<svg viewBox="0 0 120 90" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="60" cy="42" r="22" fill="none" stroke="#2f7fff" stroke-width="3"/>
+      <path d="M46 28 L74 56" stroke="#2f7fff" stroke-width="3" stroke-linecap="round"/>
+      <path d="M74 28 L46 56" stroke="#2f7fff" stroke-width="3" stroke-linecap="round"/>
+    </svg>`,
+  },
+  {
+    id: "cmd-star",
+    label: "Star",
+    thumbSvg: `<svg viewBox="0 0 120 90" xmlns="http://www.w3.org/2000/svg">
+      <path d="M60 18 L67 34 L85 34 L70 45 L76 62 L60 52 L44 62 L50 45 L35 34 L53 34 Z"
+        fill="none" stroke="#2f7fff" stroke-width="3" stroke-linejoin="round"/>
+    </svg>`,
+  },
+  {
+    id: "cmd-x",
+    label: "X",
+    thumbSvg: `<svg viewBox="0 0 120 90" xmlns="http://www.w3.org/2000/svg">
+      <path d="M40 22 L80 62" stroke="#2f7fff" stroke-width="4" stroke-linecap="round"/>
+      <path d="M80 22 L40 62" stroke="#2f7fff" stroke-width="4" stroke-linecap="round"/>
+    </svg>`,
+  },
+  ...(["CKP", "PP", "RLY", "RP", "SP", "AMN"] as const).map((txt) => ({
+    id: `cmd-${txt}`,
+    label: txt,
+    thumbSvg: `<svg viewBox="0 0 120 100" xmlns="http://www.w3.org/2000/svg">
+      <path d="M38 12 H82 V55 L60 86 L38 55 Z" fill="#8fe3ff" stroke="#111827" stroke-width="2" />
+      <rect x="42" y="18" width="36" height="22" fill="#8fe3ff" stroke="#111827" stroke-width="2"/>
+      <text x="60" y="34" text-anchor="middle" font-size="14" font-weight="800" fill="#111827">${txt}</text>
+    </svg>`,
+  })),
+];
+const LARGE_FORMATIONS = {
+  combatUnits: [
+    { id: "cbt", top: "xx", label: "CBT", inner: "dot" },
+    { id: "arc", top: "x", label: "", inner: "arc" },
+    { id: "bow", top: "x", label: "", inner: "bowtie" },
+    { id: "boxx", top: "x", label: "", inner: "x" },
+    { id: "tri", top: "x", label: "", inner: "tri" },
+    { id: "oval", top: "x", label: "", inner: "oval" },
+    { id: "dot", top: "x", label: "", inner: "dot" },
+    { id: "gate", top: "x", label: "", inner: "gate" },
+    { id: "diag", top: "x", label: "", inner: "diag" },
+    { id: "arch2", top: "x", label: "", inner: "arc" },
+    { id: "sec", top: "x", label: "SEC", inner: "dot" },
+  ],
+  combatSupport: [
+    { id: "cs", top: "xx", label: "CS", inner: "dot" },
+    { id: "mi", top: "x", label: "MI", inner: "dot" },
+    { id: "mp", top: "x", label: "", inner: "shieldMp" },
+    { id: "iw", top: "x", label: "IW", inner: "dot" },
+    { id: "ls", top: "x", label: "LS", inner: "waveLs" },
+    { id: "eod", top: "x", label: "EOD", inner: "dot" },
+  ],
+  serviceSupport: [
+    { id: "css", top: "xx", label: "CSS", inner: "dot" },
+    { id: "adm", top: "x", label: "ADM", inner: "dot" },
+    { id: "grid", top: "x", label: "", inner: "gate" },
+    { id: "bar", top: "x", label: "", inner: "diag" },
+    { id: "wheel", top: "x", label: "", inner: "wheel" },
+  ],
+  c2: [{ id: "c2hq", top: "x", label: "C2 HQ", inner: "dot" }],
+} as const;
 
 function IconTab({
   active,
@@ -186,12 +331,214 @@ function AccordionSection({
   );
 }
 
+/** ✅ สัญลักษณ์ Formations ตามรูป */
+function FormationUnitPicker() {
+  const tool = useToolStore((s) => s.tool);
+  const setTool = useToolStore((s) => s.setTool);
+
+  const unknownSvg = `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="60" cy="60" r="44" fill="#85e6ff" stroke="#111827" stroke-width="4"/>
+    <text x="60" y="78" text-anchor="middle" font-size="64" font-weight="900" fill="#111827">?</text>
+  </svg>`;
+
+  const emptySvg = `<svg viewBox="0 0 160 110" xmlns="http://www.w3.org/2000/svg">
+    <rect x="18" y="18" width="124" height="74" fill="#85e6ff" stroke="#111827" stroke-width="6"/>
+  </svg>`;
+
+  const activeVar =
+    tool.kind === "place_formation_unit" ? tool.iconId : null;
+
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <button
+        type="button"
+        onClick={() =>
+          setTool({
+            kind: "place_formation_unit",
+            iconId: "unit-unknown",
+            svg: "",
+            iconSize: 0.9,
+          })
+        }
+        className={[
+          "rounded-xl border p-3 transition hover:bg-gray-50",
+          activeVar === "unknown"
+            ? "border-sky-500 bg-sky-50 ring-2 ring-sky-200"
+            : "border-gray-300",
+        ].join(" ")}
+      >
+        <div className="text-[11px] font-semibold text-gray-500 text-center leading-tight">
+          Unknown Warfighting Symbol
+        </div>
+
+        <div
+          className="mt-2 flex justify-center h-[90px]"
+          dangerouslySetInnerHTML={{ __html: unknownSvg }}
+        />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => setTool({ kind: "place_formation_unit", iconId: "unit-empty", svg: "", iconSize: 0.9 })}
+        className={[
+          "rounded-xl border p-3 transition hover:bg-gray-50",
+          activeVar === "empty"
+            ? "border-sky-500 bg-sky-50 ring-2 ring-sky-200"
+            : "border-gray-300",
+        ].join(" ")}
+      >
+        <div className="text-[11px] font-semibold text-gray-500 text-center leading-tight">
+          Unit Symbol (empty)
+        </div>
+
+        <div
+          className="mt-2 flex justify-center h-[80px]"
+          dangerouslySetInnerHTML={{ __html: emptySvg }}
+        />
+      </button>
+
+      <div className="col-span-2 text-[11px] text-gray-500 pt-1">
+        • เลือกสัญลักษณ์ แล้วคลิกบนแผนที่เพื่อวาง
+      </div>
+    </div>
+  );
+}
+
+function HeadingList({
+  headings,
+  renderByTitle,
+}: {
+  headings: readonly string[];
+  renderByTitle?: Record<string, React.ReactNode>;
+}) {
+  const [open, setOpen] = useState<string | null>(headings[0] ?? null);
+
+  return (
+    <>
+      {headings.map((h) => (
+        <AccordionSection
+          key={h}
+          title={h}
+          open={open === h}
+          onToggle={() => setOpen(open === h ? null : h)}
+        >
+          {renderByTitle?.[h] ?? (
+            <div className="text-xs text-gray-500">(ยังไม่มี content ในหัวข้อนี้)</div>
+          )}
+        </AccordionSection>
+      ))}
+    </>
+  );
+}
+function unitBoxSvg(opts: {
+  top?: "x" | "xx" | "";
+  label?: string;          // เช่น CBT, CS, MI, MP, EOD, ADM, C2 HQ
+  inner?: "arc" | "bowtie" | "x" | "tri" | "oval" | "dot" | "gate" | "diag" | "shieldMp" | "waveLs" | "wheel";
+}) {
+  const { top = "x", label = "", inner = "dot" } = opts;
+
+  const topText = top === "xx" ? "XX" : top === "x" ? "X" : "";
+
+  const innerSvg = (() => {
+    switch (inner) {
+      case "arc":
+        return `<path d="M28 52 C 40 34, 60 34, 72 52" fill="none" stroke="#111827" stroke-width="2"/>`;
+      case "bowtie":
+        return `<path d="M34 42 L48 50 L34 58 Z" fill="#111827"/><path d="M66 42 L52 50 L66 58 Z" fill="#111827"/>`;
+      case "x":
+        return `<path d="M34 40 L66 60" stroke="#111827" stroke-width="2.5"/><path d="M66 40 L34 60" stroke="#111827" stroke-width="2.5"/>`;
+      case "tri":
+        return `<path d="M50 40 L62 60 L38 60 Z" fill="#111827"/>`;
+      case "oval":
+        return `<rect x="34" y="42" width="32" height="16" rx="8" fill="none" stroke="#111827" stroke-width="2"/>`;
+      case "dot":
+        return `<circle cx="50" cy="50" r="3.2" fill="#111827"/>`;
+      case "gate":
+        return `<path d="M40 60 V44 H60 V60" fill="none" stroke="#111827" stroke-width="2"/><path d="M44 44 V52" stroke="#111827" stroke-width="2"/><path d="M56 44 V52" stroke="#111827" stroke-width="2"/>`;
+      case "diag":
+        return `<path d="M30 62 L70 38" stroke="#111827" stroke-width="2.5"/>`;
+      case "shieldMp":
+        return `<path d="M50 36 C42 36 36 40 36 46 V54 C36 60 44 66 50 68 C56 66 64 60 64 54 V46 C64 40 58 36 50 36 Z"
+          fill="none" stroke="#111827" stroke-width="2"/><text x="50" y="55" text-anchor="middle" font-size="12" font-weight="800" fill="#111827">MP</text>`;
+      case "waveLs":
+        return `<path d="M28 58 C34 52, 40 64, 46 58 C52 52, 58 64, 64 58 C70 52, 76 64, 82 58" fill="none" stroke="#111827" stroke-width="2"/>`;
+      case "wheel":
+        return `<circle cx="50" cy="50" r="10" fill="none" stroke="#111827" stroke-width="2"/><path d="M50 40 V60" stroke="#111827" stroke-width="2"/><path d="M40 50 H60" stroke="#111827" stroke-width="2"/>`;
+      default:
+        return "";
+    }
+  })();
+
+  return `
+<svg viewBox="0 0 100 90" xmlns="http://www.w3.org/2000/svg">
+  <text x="50" y="14" text-anchor="middle" font-size="12" font-weight="800" fill="#111827">${topText}</text>
+  <rect x="18" y="20" width="64" height="44" fill="#85e6ff" stroke="#111827" stroke-width="2.5"/>
+  ${innerSvg}
+  ${label ? `<text x="50" y="52" text-anchor="middle" font-size="14" font-weight="900" fill="#111827">${label}</text>` : ""}
+</svg>`;
+}
+
+type FormationGridProps = {
+  title: string;
+  items: FormationItem[];
+};
+
+function FormationGrid({ title, items }: FormationGridProps) {
+  const tool = useToolStore((s) => s.tool);
+  const setTool = useToolStore((s) => s.setTool);
+
+  const activeId =
+    tool.kind === "place_formation_unit" ? tool.iconId : null;
+
+  return (
+    <div className="mb-4">
+      <div className="mb-2 text-sm font-semibold text-gray-900">{title}</div>
+
+      <div className="grid grid-cols-5 gap-3">
+        {items.map((it) => {
+          const active = activeId === it.id;
+
+          return (
+            <button
+              key={it.id}
+              type="button"
+              onClick={() =>
+                setTool({
+                  kind: "place_formation_unit",
+                  iconId: it.id,
+                  svg: it.svg,
+                  iconSize: it.iconSize ?? 1,
+                })
+              }
+              className={[
+                "rounded-xl border bg-white p-2 hover:bg-gray-50",
+                active ? "border-sky-500 ring-2 ring-sky-200" : "border-gray-300",
+              ].join(" ")}
+            >
+              {/* x / xx เหนือสัญลักษณ์ */}
+              <div className="text-center text-[12px] font-bold leading-none text-gray-900">
+                {it.echelon}
+              </div>
+
+              {/* ตัวสัญลักษณ์ */}
+              <div
+                className="mt-1 flex items-center justify-center"
+                dangerouslySetInnerHTML={{ __html: it.svg }}
+              />
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function Sidebar() {
   const tool = useToolStore((s) => s.tool);
   const setTool = useToolStore((s) => s.setTool);
 
   const clear = useFeatureStore((s) => s.clear);
-  const count = useFeatureStore((s) => s.features.length);
+  const count = useFeatureStore((s) => s.tac.features.length);
 
   const [topTab, setTopTab] = useState<TopTab>("gallery");
   const [catTab, setCatTab] = useState<CategoryTab>("tactical");
@@ -248,12 +595,12 @@ export default function Sidebar() {
 
       {/* category icon tabs */}
       <div className="grid grid-cols-6 gap-1 border-b p-2">
-        <IconTab active={catTab === "favorites"} label="My Favorites" icon="🔖" onClick={() => setCatTab("favorites")} />
-        <IconTab active={catTab === "formations"} label="Formations" icon="🧩" onClick={() => setCatTab("formations")} />
-        <IconTab active={catTab === "equipment"} label="Equipment" icon="🛠️" onClick={() => setCatTab("equipment")} />
-        <IconTab active={catTab === "tactical"} label="Tactical" icon="↪️" onClick={() => setCatTab("tactical")} />
-        <IconTab active={catTab === "functionSpecific"} label="Function" icon="📍" onClick={() => setCatTab("functionSpecific")} />
-        <IconTab active={catTab === "metoc"} label="Metoc" icon="🏳️" onClick={() => setCatTab("metoc")} />
+        <IconTab active={catTab === "favorites"} label="My Favorites" icon={<MdFavoriteBorder />} onClick={() => setCatTab("favorites")} />
+        <IconTab active={catTab === "formations"} label="Formations" icon={<MdGroups />} onClick={() => setCatTab("formations")} />
+        <IconTab active={catTab === "equipment"} label="Equipment" icon={<MdConstruction />} onClick={() => setCatTab("equipment")} />
+        <IconTab active={catTab === "tactical"} label="Tactical" icon={<MdAltRoute />} onClick={() => setCatTab("tactical")} />
+        <IconTab active={catTab === "functionSpecific"} label="Function" icon={<MdPlace />} onClick={() => setCatTab("functionSpecific")} />
+        <IconTab active={catTab === "metoc"} label="Metoc" icon={<MdAir />} onClick={() => setCatTab("metoc")} />
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -265,11 +612,32 @@ export default function Sidebar() {
           </div>
         ) : (
           <>
-            {catTab !== "tactical" ? (
-              <div className="p-3 text-sm text-gray-600">
-                ตอนนี้เดโมเฉพาะแท็บ <b>Tactical</b> ก่อน
-              </div>
-            ) : (
+            {catTab === "favorites" ? <HeadingList headings={FAVORITES_HEADINGS} /> : null}
+
+            {/* ✅ Formations (มี content ในหัวข้อแรก) */}
+            {catTab === "formations" ? (
+              <HeadingList
+                headings={FORMATIONS_HEADINGS}
+                renderByTitle={{
+                  "Unit Symbols (empty)": <FormationUnitPicker />,
+                  "Large Formations, Command and Control": (
+                    <div>
+                      <FormationGrid title="Combat Units" items={FORMATION_GROUPS["Combat Units"]} />
+                      <FormationGrid title="Combat Support Units" items={FORMATION_GROUPS["Combat Support Units"]} />
+                      <FormationGrid title="Combat Service Support Units" items={FORMATION_GROUPS["Combat Service Support Units"]} />
+                      <FormationGrid title="Command and Control" items={FORMATION_GROUPS["Command and Control"]} />
+                    </div>
+                  ),
+                }}
+              />
+            ) : null}
+
+            {catTab === "equipment" ? <HeadingList headings={EQUIPMENT_HEADINGS} /> : null}
+            {catTab === "functionSpecific" ? <HeadingList headings={FUNCTION_HEADINGS} /> : null}
+            {catTab === "metoc" ? <HeadingList headings={METOC_HEADINGS} /> : null}
+
+            {/* ===== Tactical (ของเดิม) ===== */}
+            {catTab === "tactical" ? (
               <>
                 {sections.map((key) => (
                   <AccordionSection
@@ -278,7 +646,6 @@ export default function Sidebar() {
                     open={openSection === key}
                     onToggle={() => setOpenSection(openSection === key ? null : key)}
                   >
-                    {/* TASKS */}
                     {key === "tasks" ? (
                       <div className="grid grid-cols-2 gap-2">
                         {TASKS.map((t) => {
@@ -292,7 +659,6 @@ export default function Sidebar() {
                                 "rounded-lg border p-2 text-left hover:bg-gray-50",
                                 active ? "border-sky-500 bg-sky-50" : "border-gray-300",
                               ].join(" ")}
-                              title="คลิกเพื่อเข้าสู่โหมดวาด: คลิกจุดเริ่ม + จุดจบ (ดับเบิลคลิกยกเลิกไม่ได้ ใช้ ESC)"
                             >
                               <div className="w-full" dangerouslySetInnerHTML={{ __html: t.thumbSvg }} />
                             </button>
@@ -301,7 +667,6 @@ export default function Sidebar() {
                       </div>
                     ) : null}
 
-                    {/* BASE DEPLOYMENTS */}
                     {key === "baseDeploy" ? (
                       <div className="grid grid-cols-4 gap-2">
                         {BASE_DEPLOY_SYMBOLS.map((s) => {
@@ -309,13 +674,8 @@ export default function Sidebar() {
                           return (
                             <button
                               key={s.label}
-                              onClick={() => setTool({ kind: "place_symbol", sidc: s.sidc, label: s.label })}
-                              className={[
-                                "rounded-lg border px-2 py-2 text-center text-xs font-semibold",
-                                tool.kind === "place_symbol" && (tool as any).label === s.label
-                                  ? "border-sky-500 bg-sky-50"
-                                  : "hover:bg-gray-50",
-                              ].join(" ")}
+                              onClick={() => setTool({ kind: "draw_area", sidc: s.sidc, label: s.label } as any)}
+                              className="rounded-lg border px-2 py-2 text-center text-xs font-semibold hover:bg-gray-50"
                               type="button"
                             >
                               <div className="mx-auto h-[34px] w-[34px]" dangerouslySetInnerHTML={{ __html: svg }} />
@@ -326,7 +686,6 @@ export default function Sidebar() {
                       </div>
                     ) : null}
 
-                    {/* DEFENSIVE LINES */}
                     {key === "defensive" ? (
                       <div className="grid grid-cols-2 gap-2">
                         {DEFENSIVE.map((d) => {
@@ -340,7 +699,6 @@ export default function Sidebar() {
                                 "rounded-lg border p-2 hover:bg-gray-50",
                                 active ? "border-sky-500 bg-sky-50" : "border-gray-300",
                               ].join(" ")}
-                              title="โหมดวาด: คลิกหลายจุด, ดับเบิลคลิกเพื่อจบ"
                             >
                               <div dangerouslySetInnerHTML={{ __html: d.thumbSvg }} />
                             </button>
@@ -349,14 +707,34 @@ export default function Sidebar() {
                       </div>
                     ) : null}
 
-                    {/* placeholders */}
-                    {key !== "tasks" && key !== "baseDeploy" && key !== "defensive" ? (
+                    {key === "commando" ? (
+                      <div className="grid grid-cols-5 gap-2">
+                        {COMMANDO_POINTS.map((c) => {
+                          const active = tool.kind === "place_commando" && (tool as any).iconId === c.id;
+                          return (
+                            <button
+                              key={c.id}
+                              type="button"
+                              onClick={() => setTool({ kind: "place_commando", iconId: c.id, svg: c.thumbSvg, label: c.label } as any)}
+                              className={[
+                                "rounded-lg border p-2 hover:bg-gray-50",
+                                active ? "border-sky-500 bg-sky-50" : "border-gray-300",
+                              ].join(" ")}
+                            >
+                              <div dangerouslySetInnerHTML={{ __html: c.thumbSvg }} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    {key !== "tasks" && key !== "commando" && key !== "baseDeploy" && key !== "defensive" ? (
                       <div className="text-xs text-gray-500">(ยังไม่ทำ content หมวดนี้)</div>
                     ) : null}
                   </AccordionSection>
                 ))}
               </>
-            )}
+            ) : null}
           </>
         )}
       </div>
@@ -373,25 +751,20 @@ export default function Sidebar() {
         </div>
 
         <div className="mt-2 flex gap-2">
-          <button
-            className="flex-1 rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
-            onClick={() => setTool({ kind: "none" })}
-            type="button"
-          >
+          <button className="flex-1 rounded-lg border px-3 py-2 text-sm hover:bg-gray-50" onClick={() => setTool({ kind: "none" })} type="button">
             Pointer
           </button>
           <button
             className="flex-1 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 hover:bg-red-100"
-            onClick={clear}
+            onClick={() => {
+              clear();
+              useToolStore.getState().setTool({ kind: "none" });
+              window.dispatchEvent(new Event("map:clear"));
+            }}
             type="button"
           >
             Clear
           </button>
-        </div>
-
-        <div className="mt-2 text-xs text-gray-500">
-          • Tasks: คลิก 2 จุด<br />
-          • Defensive: คลิกหลายจุด แล้ว “คลิกขวา” เพื่อจบ (กด ESC เพื่อยกเลิก)
         </div>
       </div>
     </div>

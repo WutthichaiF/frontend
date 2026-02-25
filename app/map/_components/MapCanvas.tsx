@@ -44,7 +44,30 @@ async function ensureIconFromSvg(map: Map, iconId: string, svg: string, size = 9
   const data = await svgToImageData(svg, size);
   map.addImage(iconId, data, { pixelRatio: 2 });
 }
+async function ensureIconFromUrl(map: Map, iconId: string, url: string, size = 110) {
+  if (map.hasImage(iconId)) return;
 
+  const img = document.createElement("img");
+  img.crossOrigin = "anonymous"; 
+  img.width = size;
+  img.height = size;
+
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error("image load failed: " + url));
+    img.src = url;
+  });
+
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  ctx.clearRect(0, 0, size, size);
+  ctx.drawImage(img, 0, 0, size, size);
+
+  const data = ctx.getImageData(0, 0, size, size);
+  map.addImage(iconId, data, { pixelRatio: 2 });
+}
 function ensureSourcesAndLayers(map: Map) {
   if (!map.getSource("tac-src")) {
     map.addSource("tac-src", {
@@ -132,7 +155,6 @@ function ensureSourcesAndLayers(map: Map) {
     });
   }
 
-  // defensive points icons (images are added by Tactical.ts)
   if (!map.getLayer("def-x")) {
     map.addLayer({
       id: "def-x",
@@ -236,7 +258,7 @@ function ensureSourcesAndLayers(map: Map) {
       filter: ["==", ["get", "gkind"], "formation_unit"],
       layout: {
         "icon-image": ["get", "iconId"],
-        "icon-size": ["coalesce", ["get", "iconSize"], 1],
+        "icon-size": ["coalesce", ["get", "iconSize"], 1.4],
         "icon-allow-overlap": true,
         "icon-rotation-alignment": "map",
       },

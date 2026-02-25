@@ -367,7 +367,7 @@ function FormationUnitPicker() {
             : "border-gray-300",
         ].join(" ")}
       >
-        <div className="text-[11px] font-semibold text-gray-500 text-center leading-tight">
+        <div className="text-[12px] font-medium text-gray-700 text-center leading-tight">
           Unknown Warfighting Symbol
         </div>
 
@@ -387,7 +387,7 @@ function FormationUnitPicker() {
             : "border-gray-300",
         ].join(" ")}
       >
-        <div className="text-[11px] font-semibold text-gray-500 text-center leading-tight">
+        <div className="text-[12px] font-medium text-gray-700 text-center leading-tight">
           Unit Symbol (empty)
         </div>
 
@@ -487,12 +487,11 @@ function FormationGrid({ title, items }: FormationGridProps) {
   const tool = useToolStore((s) => s.tool);
   const setTool = useToolStore((s) => s.setTool);
 
-  const activeId =
-    tool.kind === "place_formation_unit" ? tool.iconId : null;
+  const activeId = tool.kind === "place_formation_unit" ? tool.iconId : null;
 
   return (
     <div className="mb-4">
-      <div className="mb-2 text-sm font-semibold text-gray-900">{title}</div>
+      <div className="mb-2 text-sm font-medium text-gray-900">{title}</div>
 
       <div className="grid grid-cols-5 gap-3">
         {items.map((it) => {
@@ -506,25 +505,29 @@ function FormationGrid({ title, items }: FormationGridProps) {
                 setTool({
                   kind: "place_formation_unit",
                   iconId: it.id,
-                  svg: it.svg,
+                  svg: it.svg ?? "",
+                  thumb: it.thumb,
                   iconSize: it.iconSize ?? 1,
                 })
               }
               className={[
-                "rounded-xl border bg-white p-2 hover:bg-gray-50",
                 active ? "border-sky-500 ring-2 ring-sky-200" : "border-gray-300",
               ].join(" ")}
             >
-              {/* x / xx เหนือสัญลักษณ์ */}
-              <div className="text-center text-[12px] font-bold leading-none text-gray-900">
-                {it.echelon}
-              </div>
 
-              {/* ตัวสัญลักษณ์ */}
-              <div
-                className="mt-1 flex items-center justify-center"
-                dangerouslySetInnerHTML={{ __html: it.svg }}
-              />
+
+              <div className="mt-1 flex items-center justify-center">
+                {it.thumb ? (
+                  <img
+                    src={it.thumb}
+                    alt={it.id}
+                    className="h-[84px] w-[84px] object-contain"
+                    draggable={false}
+                  />
+                ) : (
+                  <div className="scale-125" dangerouslySetInnerHTML={{ __html: it.svg ?? "" }} />
+                )}
+              </div>
             </button>
           );
         })}
@@ -614,7 +617,6 @@ export default function Sidebar() {
           <>
             {catTab === "favorites" ? <HeadingList headings={FAVORITES_HEADINGS} /> : null}
 
-            {/* ✅ Formations (มี content ในหัวข้อแรก) */}
             {catTab === "formations" ? (
               <HeadingList
                 headings={FORMATIONS_HEADINGS}
@@ -626,6 +628,18 @@ export default function Sidebar() {
                       <FormationGrid title="Combat Support Units" items={FORMATION_GROUPS["Combat Support Units"]} />
                       <FormationGrid title="Combat Service Support Units" items={FORMATION_GROUPS["Combat Service Support Units"]} />
                       <FormationGrid title="Command and Control" items={FORMATION_GROUPS["Command and Control"]} />
+                    </div>
+                  ),
+                  "Infantry, Tanks and Artillery": (
+                    <div className="space-y-4">
+                      <div>
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Infantry</div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["Infantry"]} />
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Armored / Tracked</div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["Armored / Tracked"]} />
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Artillery</div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["Artillery"]} />
+                      </div>
                     </div>
                   ),
                 }}

@@ -30,7 +30,7 @@ export default function FormationGrid({ title, items }: Props) {
                 setTool({
                   kind: "place_formation_unit",
                   iconId: it.id,
-                  svg: it.svg,
+                  svg: it.svg ?? "",
                   iconSize: it.iconSize ?? 1,
                 })
               }
@@ -38,16 +38,12 @@ export default function FormationGrid({ title, items }: Props) {
                 "rounded-md p-1 hover:bg-sky-50",
                 active ? "ring-2 ring-sky-400 bg-sky-50" : "",
               ].join(" ")}
-              title={it.label}
+              
             >
-              {/* x / xx เหมือนรูป */}
-              <div className="h-4 text-center text-[11px] font-black leading-4 text-gray-900">
-                {it.echelon}
-              </div>
-
+            
               <div
                 className="h-[60px] w-[86px]"
-                dangerouslySetInnerHTML={{ __html: it.svg }}
+                dangerouslySetInnerHTML={{ __html: it.svg ?? "" }}
               />
             </button>
           );

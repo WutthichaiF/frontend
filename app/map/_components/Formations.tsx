@@ -1,9 +1,33 @@
-// app/map/components/Formations.tsx
 "use client";
 
 import { v4 as uuidv4 } from "uuid";
 import type { MapModuleCtx } from "./mapContext";
 import { useToolStore } from "@/store/useToolStore";
+
+async function ensureIconFromUrl(map: any, iconId: string, url: string, size = 110) {
+  if (map.hasImage(iconId)) return;
+
+  const img = document.createElement("img");
+  img.crossOrigin = "anonymous";
+  img.width = size;
+  img.height = size;
+
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error("image load failed: " + url));
+    img.src = url;
+  });
+
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  ctx.clearRect(0, 0, size, size);
+  ctx.drawImage(img, 0, 0, size, size);
+
+  const data = ctx.getImageData(0, 0, size, size);
+  map.addImage(iconId, data, { pixelRatio: 2 });
+}
 
 async function ensureFormationIcons(ctx: MapModuleCtx) {
   const { map, ensureIconFromSvg } = ctx;
@@ -27,12 +51,24 @@ export async function registerFormations(ctx: MapModuleCtx) {
   await ensureFormationIcons(ctx);
 
   const onClick = async (e: any) => {
-    const tool = useToolStore.getState().tool;
+    const tool: any = useToolStore.getState().tool;
     if (tool.kind !== "place_formation_unit") return;
 
     const id = uuidv4();
 
-    await ctx.ensureIconFromSvg(map, tool.iconId, tool.svg ?? "", 110);
+    if (tool.thumb) {
+      await ensureIconFromUrl(map, tool.iconId, tool.thumb, 110);
+    }
+    else if (map.hasImage(tool.iconId)) {
+      
+    }
+    else if (tool.svg && String(tool.svg).trim().length > 0) {
+      await ctx.ensureIconFromSvg(map, tool.iconId, tool.svg, 110);
+    }
+    else {
+      console.warn("Formation icon has no thumb/svg:", tool.iconId);
+      return;
+    }
 
     const feat: any = {
       type: "Feature",
@@ -52,8 +88,5 @@ export async function registerFormations(ctx: MapModuleCtx) {
   };
 
   map.on("click", onClick);
-
-  return () => {
-    map.off("click", onClick);
-  };
+  return () => map.off("click", onClick);
 }

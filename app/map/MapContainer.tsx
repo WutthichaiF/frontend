@@ -6,13 +6,13 @@ import MapHUD from "./_components/MapHUD";
 import Sidebar from "@/components/Sidebar/Sidebar";
 
 export default function MapContainer() {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   return (
     <div className="relative h-screen w-screen overflow-hidden">
       {/* Map */}
       <MapCanvas />
-      <MapHUD />
+      
 
       {/* Toggle Button (top-left) */}
       <button

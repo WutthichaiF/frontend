@@ -12,7 +12,9 @@ import {
   MdGroups,
   MdPlace,
 } from "react-icons/md";
-import { FORMATION_GROUPS, FormationItem } from "./formations";
+import { FORMATION_GROUPS, FormationItem } from "../../lib/formations";
+import { EQUIPMENT_GROUPS } from "../../lib/equipmentIcons";
+import { title } from "process";
 type TopTab = "gallery" | "search";
 type CategoryTab =
   | "favorites"
@@ -411,7 +413,16 @@ function HeadingList({
   headings: readonly string[];
   renderByTitle?: Record<string, React.ReactNode>;
 }) {
-  const [open, setOpen] = useState<string | null>(headings[0] ?? null);
+  const [openSet, setOpenSet] = useState<Set<string>>(() => new Set([headings[0] ?? ""]));
+
+  const toggle = (h: string) => {
+    setOpenSet((prev) => {
+      const next = new Set(prev);
+      if (next.has(h)) next.delete(h);
+      else next.add(h);
+      return next;
+    });
+  };
 
   return (
     <>
@@ -419,8 +430,8 @@ function HeadingList({
         <AccordionSection
           key={h}
           title={h}
-          open={open === h}
-          onToggle={() => setOpen(open === h ? null : h)}
+          open={openSet.has(h)}
+          onToggle={() => toggle(h)}
         >
           {renderByTitle?.[h] ?? (
             <div className="text-xs text-gray-500">(ยังไม่มี content ในหัวข้อนี้)</div>
@@ -429,53 +440,6 @@ function HeadingList({
       ))}
     </>
   );
-}
-function unitBoxSvg(opts: {
-  top?: "x" | "xx" | "";
-  label?: string;          // เช่น CBT, CS, MI, MP, EOD, ADM, C2 HQ
-  inner?: "arc" | "bowtie" | "x" | "tri" | "oval" | "dot" | "gate" | "diag" | "shieldMp" | "waveLs" | "wheel";
-}) {
-  const { top = "x", label = "", inner = "dot" } = opts;
-
-  const topText = top === "xx" ? "XX" : top === "x" ? "X" : "";
-
-  const innerSvg = (() => {
-    switch (inner) {
-      case "arc":
-        return `<path d="M28 52 C 40 34, 60 34, 72 52" fill="none" stroke="#111827" stroke-width="2"/>`;
-      case "bowtie":
-        return `<path d="M34 42 L48 50 L34 58 Z" fill="#111827"/><path d="M66 42 L52 50 L66 58 Z" fill="#111827"/>`;
-      case "x":
-        return `<path d="M34 40 L66 60" stroke="#111827" stroke-width="2.5"/><path d="M66 40 L34 60" stroke="#111827" stroke-width="2.5"/>`;
-      case "tri":
-        return `<path d="M50 40 L62 60 L38 60 Z" fill="#111827"/>`;
-      case "oval":
-        return `<rect x="34" y="42" width="32" height="16" rx="8" fill="none" stroke="#111827" stroke-width="2"/>`;
-      case "dot":
-        return `<circle cx="50" cy="50" r="3.2" fill="#111827"/>`;
-      case "gate":
-        return `<path d="M40 60 V44 H60 V60" fill="none" stroke="#111827" stroke-width="2"/><path d="M44 44 V52" stroke="#111827" stroke-width="2"/><path d="M56 44 V52" stroke="#111827" stroke-width="2"/>`;
-      case "diag":
-        return `<path d="M30 62 L70 38" stroke="#111827" stroke-width="2.5"/>`;
-      case "shieldMp":
-        return `<path d="M50 36 C42 36 36 40 36 46 V54 C36 60 44 66 50 68 C56 66 64 60 64 54 V46 C64 40 58 36 50 36 Z"
-          fill="none" stroke="#111827" stroke-width="2"/><text x="50" y="55" text-anchor="middle" font-size="12" font-weight="800" fill="#111827">MP</text>`;
-      case "waveLs":
-        return `<path d="M28 58 C34 52, 40 64, 46 58 C52 52, 58 64, 64 58 C70 52, 76 64, 82 58" fill="none" stroke="#111827" stroke-width="2"/>`;
-      case "wheel":
-        return `<circle cx="50" cy="50" r="10" fill="none" stroke="#111827" stroke-width="2"/><path d="M50 40 V60" stroke="#111827" stroke-width="2"/><path d="M40 50 H60" stroke="#111827" stroke-width="2"/>`;
-      default:
-        return "";
-    }
-  })();
-
-  return `
-<svg viewBox="0 0 100 90" xmlns="http://www.w3.org/2000/svg">
-  <text x="50" y="14" text-anchor="middle" font-size="12" font-weight="800" fill="#111827">${topText}</text>
-  <rect x="18" y="20" width="64" height="44" fill="#85e6ff" stroke="#111827" stroke-width="2.5"/>
-  ${innerSvg}
-  ${label ? `<text x="50" y="52" text-anchor="middle" font-size="14" font-weight="900" fill="#111827">${label}</text>` : ""}
-</svg>`;
 }
 
 type FormationGridProps = {
@@ -514,20 +478,65 @@ function FormationGrid({ title, items }: FormationGridProps) {
                 active ? "border-sky-500 ring-2 ring-sky-200" : "border-gray-300",
               ].join(" ")}
             >
-
-
               <div className="mt-1 flex items-center justify-center">
                 {it.thumb ? (
                   <img
                     src={it.thumb}
                     alt={it.id}
-                    className="h-[84px] w-[84px] object-contain"
+                    className="h-96px] w-[96px] object-contain"
                     draggable={false}
                   />
                 ) : (
                   <div className="scale-125" dangerouslySetInnerHTML={{ __html: it.svg ?? "" }} />
                 )}
               </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function EquipmentGrid({ items, canRotate = true }: { items: any[]; canRotate?: boolean }) {
+  const tool = useToolStore((s) => s.tool);
+  const setTool = useToolStore((s) => s.setTool);
+
+  const activeId = tool.kind === "place_equipment_symbol" ? (tool as any).iconId : null;
+
+  return (
+    <div className="mb-4">
+      <div className="grid grid-cols-5 gap-3">
+        {items.map((it) => {
+          const active = activeId === it.id;
+
+          return (
+            <button
+              key={it.id}
+              type="button"
+              onClick={() =>
+                setTool({
+                  kind: "place_equipment_symbol",
+                  iconId: it.id,
+                  thumb: it.thumb,
+                  svg: it.svg ?? "",
+                  iconSize: it.iconSize ?? 1.6,
+                  canRotate: it.canRotate ?? canRotate,
+                } as any)
+              }
+              className={[
+                active ? "border-sky-500 ring-2 ring-sky-200" : "border-gray-300",
+              ].join(" ")}
+            >
+              <div className="mt-1 flex items-center justify-center">
+                <img
+                  src={it.thumb}
+                  alt={it.id}
+                  className="h-[96px] w-[96px] object-contain"
+                  draggable={false}
+                />
+              </div>
+              <div className="scale-125" dangerouslySetInnerHTML={{ __html: it.svg ?? "" }} />
             </button>
           );
         })}
@@ -623,22 +632,125 @@ export default function Sidebar() {
                 renderByTitle={{
                   "Unit Symbols (empty)": <FormationUnitPicker />,
                   "Large Formations, Command and Control": (
-                    <div>
-                      <FormationGrid title="Combat Units" items={FORMATION_GROUPS["Combat Units"]} />
-                      <FormationGrid title="Combat Support Units" items={FORMATION_GROUPS["Combat Support Units"]} />
-                      <FormationGrid title="Combat Service Support Units" items={FORMATION_GROUPS["Combat Service Support Units"]} />
-                      <FormationGrid title="Command and Control" items={FORMATION_GROUPS["Command and Control"]} />
+                    <div className="space-y-1">
+                      <div>
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Combat Support Units</div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["Combat Support Units"]} />
+                      </div>
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Combat Service Support Units</div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["Combat Service Support Units"]} />
+                      </div>
+                      <div className="border-t pt-1"><div className="mb-2 text-[14px] font-medium text-gray-900">Command and Control</div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["Command and Control"]} />
+                      </div>
                     </div>
                   ),
                   "Infantry, Tanks and Artillery": (
-                    <div className="space-y-4">
+                    <div className="space-y-1">
                       <div>
-                        <div className="mb-2 text-[14px] font-medium text-gray-900">Infantry</div>
-                        <FormationGrid title="" items={FORMATION_GROUPS["Infantry"]} />
-                        <div className="mb-2 text-[14px] font-medium text-gray-900">Armored / Tracked</div>
-                        <FormationGrid title="" items={FORMATION_GROUPS["Armored / Tracked"]} />
-                        <div className="mb-2 text-[14px] font-medium text-gray-900">Artillery</div>
-                        <FormationGrid title="" items={FORMATION_GROUPS["Artillery"]} />
+                        <div>
+                          <div className="mb-2 text-[14px] font-medium text-gray-900">Infantry</div>
+                          <FormationGrid title="" items={FORMATION_GROUPS["Infantry"]} />
+                        </div>
+                        <div className="border-t pt-1">
+                          <div className="mb-2 text-[14px] font-medium text-gray-900">Armored / Tracked</div>
+                          <FormationGrid title="" items={FORMATION_GROUPS["Armored / Tracked"]} />
+                        </div>
+                        <div className="border-t pt-1">
+                          <div className="mb-2 text-[14px] font-medium text-gray-900">Artillery</div>
+                          <FormationGrid title="" items={FORMATION_GROUPS["Artillery"]} />
+                        </div>
+                      </div>
+                    </div>
+                  ),
+                  "Aviation and Ground Based Air Defense": (
+                    <div className="space-y-1">
+                      <div>
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Aviation</div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["Aviation"] ?? []} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Unmanned Aerial Vehicle (UAV)</div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["UAV"] ?? []} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Air Base Unit</div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["Air_base"] ?? []} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Ground Based Air Defense (GBAD)</div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["GBAD"] ?? []} />
+                      </div>
+                    </div>
+                  ),
+                  "Engineer": (
+                    <div className="space-y-1">
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Combat</div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["Combat Engineer"] ?? []} />
+                      </div>
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Construction </div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["Construction"] ?? []} />
+                      </div>
+                    </div>
+                  ),
+                  "Command, Transmission and EW": (
+                    <div className="space-y-1">
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Command Support </div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["Command Support"] ?? []} />
+                      </div>
+                      <div className=" border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Transmission</div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["Transmission"] ?? []} />
+                      </div>
+                      <div className="border-t pt-1"></div>
+                      <div className="mb-2 text-[14px] font-medium text-gray-900">Command, Transmission and EW </div>
+                      <FormationGrid title="" items={FORMATION_GROUPS["Command, Transmission and EW"] ?? []} />
+                    </div>
+                  ),
+                  "Logistics and Medical": (
+                    <div className="space-y-1">
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Logistics</div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["Logistics"] ?? []} />
+                      </div>
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Transportation</div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["Transportation"] ?? []} />
+                      </div>
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Maintenance</div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["Maintenance"] ?? []} />
+                      </div>
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Medical</div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["Medical"] ?? []} />
+                      </div>
+                    </div>
+                  ),
+                  "Special Forces": (
+                    <div className="space-y-1">
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Military Security</div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["Military Security"] ?? []} />
+                      </div>
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">NBC Defense (Nuclear-Biological-Chemical)</div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["NBC Defense"] ?? []} />
+                      </div>
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Special Forces</div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["Special Forces"] ?? []} />
+                      </div>
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Military Justice</div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["Military Justice"] ?? []} />
                       </div>
                     </div>
                   ),
@@ -646,11 +758,77 @@ export default function Sidebar() {
               />
             ) : null}
 
-            {catTab === "equipment" ? <HeadingList headings={EQUIPMENT_HEADINGS} /> : null}
+            {catTab === "equipment" ? (
+              <HeadingList
+                headings={EQUIPMENT_HEADINGS}
+                renderByTitle={{
+                  "Installations": (
+                    <div className="space-y-1">
+                      <div>
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Installation</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Installation"] ?? []} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Raw Material Production / Storage</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Raw Material Production / Storage"] ?? []} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Processing Facility</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Processing Facility"] ?? []} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Service, Research, Utility Facility</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Service, Research, Utility Facility"] ?? []} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Military Materiel Facility</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Military Materiel Facility"] ?? []} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Actions Points</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Actions Points"] ?? []} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Post</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Post"] ?? []} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Medical and Supply Points </div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Medical and Supply Points"] ?? []} />
+                      </div>
+                    </div>
+                  ),
+                  "Weapons": (
+                    <div className="space-y-1">
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Fire Weapons and Artillery</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Fire Weapons and Artillery"] ?? []} />
+                      </div>
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Antitank</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Antitank"] ?? []} />
+                      </div>
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Air Defense</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Air Defense"] ?? []} />
+                      </div>
+                    </div>
+                  ),
+                  
+                }}
+              />
+            ) : null}
+
             {catTab === "functionSpecific" ? <HeadingList headings={FUNCTION_HEADINGS} /> : null}
             {catTab === "metoc" ? <HeadingList headings={METOC_HEADINGS} /> : null}
 
-            {/* ===== Tactical (ของเดิม) ===== */}
             {catTab === "tactical" ? (
               <>
                 {sections.map((key) => (
@@ -731,7 +909,6 @@ export default function Sidebar() {
                               type="button"
                               onClick={() => setTool({ kind: "place_commando", iconId: c.id, svg: c.thumbSvg, label: c.label } as any)}
                               className={[
-                                "rounded-lg border p-2 hover:bg-gray-50",
                                 active ? "border-sky-500 bg-sky-50" : "border-gray-300",
                               ].join(" ")}
                             >
@@ -749,6 +926,7 @@ export default function Sidebar() {
                 ))}
               </>
             ) : null}
+
           </>
         )}
       </div>
@@ -781,6 +959,6 @@ export default function Sidebar() {
           </button>
         </div>
       </div>
-    </div>
+    </div >
   );
 }

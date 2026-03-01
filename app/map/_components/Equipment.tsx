@@ -57,7 +57,7 @@ export async function registerEquipment(ctx: MapModuleCtx) {
         iconId: tool.iconId,
         iconSize: tool.iconSize ?? 1.6,
         rot: 0,
-        canRotate: tool.canRotate === false ? 0 : 1,
+        canRotate: tool.canRotate === true,
         selected: 0,
       },
     };

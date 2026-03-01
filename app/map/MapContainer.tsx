@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import MapCanvas from "./_components/MapCanvas";
-import MapHUD from "./_components/MapHUD";
 import Sidebar from "@/components/Sidebar/Sidebar";
 
 export default function MapContainer() {
@@ -12,8 +11,6 @@ export default function MapContainer() {
     <div className="relative h-screen w-screen overflow-hidden">
       {/* Map */}
       <MapCanvas />
-      
-
       {/* Toggle Button (top-left) */}
       <button
         onClick={() => setOpen((v) => !v)}

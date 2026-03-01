@@ -15,6 +15,8 @@ import {
 import { FORMATION_GROUPS, FormationItem } from "../../lib/formations";
 import { EQUIPMENT_GROUPS } from "../../lib/equipmentIcons";
 import { title } from "process";
+import { DiVim } from "react-icons/di";
+import { count } from "console";
 type TopTab = "gallery" | "search";
 type CategoryTab =
   | "favorites"
@@ -333,79 +335,6 @@ function AccordionSection({
   );
 }
 
-/** ✅ สัญลักษณ์ Formations ตามรูป */
-function FormationUnitPicker() {
-  const tool = useToolStore((s) => s.tool);
-  const setTool = useToolStore((s) => s.setTool);
-
-  const unknownSvg = `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="60" cy="60" r="44" fill="#85e6ff" stroke="#111827" stroke-width="4"/>
-    <text x="60" y="78" text-anchor="middle" font-size="64" font-weight="900" fill="#111827">?</text>
-  </svg>`;
-
-  const emptySvg = `<svg viewBox="0 0 160 110" xmlns="http://www.w3.org/2000/svg">
-    <rect x="18" y="18" width="124" height="74" fill="#85e6ff" stroke="#111827" stroke-width="6"/>
-  </svg>`;
-
-  const activeVar =
-    tool.kind === "place_formation_unit" ? tool.iconId : null;
-
-  return (
-    <div className="grid grid-cols-2 gap-2">
-      <button
-        type="button"
-        onClick={() =>
-          setTool({
-            kind: "place_formation_unit",
-            iconId: "unit-unknown",
-            svg: "",
-            iconSize: 0.9,
-          })
-        }
-        className={[
-          "rounded-xl border p-3 transition hover:bg-gray-50",
-          activeVar === "unknown"
-            ? "border-sky-500 bg-sky-50 ring-2 ring-sky-200"
-            : "border-gray-300",
-        ].join(" ")}
-      >
-        <div className="text-[12px] font-medium text-gray-700 text-center leading-tight">
-          Unknown Warfighting Symbol
-        </div>
-
-        <div
-          className="mt-2 flex justify-center h-[90px]"
-          dangerouslySetInnerHTML={{ __html: unknownSvg }}
-        />
-      </button>
-
-      <button
-        type="button"
-        onClick={() => setTool({ kind: "place_formation_unit", iconId: "unit-empty", svg: "", iconSize: 0.9 })}
-        className={[
-          "rounded-xl border p-3 transition hover:bg-gray-50",
-          activeVar === "empty"
-            ? "border-sky-500 bg-sky-50 ring-2 ring-sky-200"
-            : "border-gray-300",
-        ].join(" ")}
-      >
-        <div className="text-[12px] font-medium text-gray-700 text-center leading-tight">
-          Unit Symbol (empty)
-        </div>
-
-        <div
-          className="mt-2 flex justify-center h-[80px]"
-          dangerouslySetInnerHTML={{ __html: emptySvg }}
-        />
-      </button>
-
-      <div className="col-span-2 text-[11px] text-gray-500 pt-1">
-        • เลือกสัญลักษณ์ แล้วคลิกบนแผนที่เพื่อวาง
-      </div>
-    </div>
-  );
-}
-
 function HeadingList({
   headings,
   renderByTitle,
@@ -444,7 +373,7 @@ function HeadingList({
 
 type FormationGridProps = {
   title: string;
-  items: FormationItem[];
+  items?: FormationItem[];
 };
 
 function FormationGrid({ title, items }: FormationGridProps) {
@@ -455,11 +384,18 @@ function FormationGrid({ title, items }: FormationGridProps) {
 
   return (
     <div className="mb-4">
-      <div className="mb-2 text-sm font-medium text-gray-900">{title}</div>
+      {title ? <div className="mb-2 text-sm font-medium text-gray-900">{title}</div> : null}
 
       <div className="grid grid-cols-5 gap-3">
-        {items.map((it) => {
+        {(items ?? []).map((it) => {
           const active = activeId === it.id;
+          const iconId = it.symbolCode ? `sidc:${it.symbolCode}` : it.id; 
+          const previewSvg =
+            it.svg?.trim()
+              ? it.svg
+              : it.symbolCode
+                ? sidcToSvg(it.symbolCode, { size: 96 })
+                : "";
 
           return (
             <button
@@ -468,11 +404,15 @@ function FormationGrid({ title, items }: FormationGridProps) {
               onClick={() =>
                 setTool({
                   kind: "place_formation_unit",
-                  iconId: it.id,
-                  svg: it.svg ?? "",
-                  thumb: it.thumb,
+                  iconId,
                   iconSize: it.iconSize ?? 1,
-                })
+                  symbolCode: it.symbolCode ?? "",
+                  shortName: it.shortName ?? "",
+                  abbreviation: it.abbreviation ?? "",
+                  fullName: it.fullName ?? "",
+                  svg: it.svg ?? "",
+                  thumb: (it as any).thumb,
+                } as any)
               }
               className={[
                 active ? "border-sky-500 ring-2 ring-sky-200" : "border-gray-300",
@@ -483,11 +423,19 @@ function FormationGrid({ title, items }: FormationGridProps) {
                   <img
                     src={it.thumb}
                     alt={it.id}
-                    className="h-96px] w-[96px] object-contain"
+                    className="h-full w-full object-contain"
                     draggable={false}
                   />
+                ) : it.svg ? (
+                  <div dangerouslySetInnerHTML={{ __html: it.svg }} />
+                ) : it.symbolCode ? (
+                  <div
+                    dangerouslySetInnerHTML={{
+                      __html: sidcToSvg(it.symbolCode, { size: 40 }),
+                    }}
+                  />
                 ) : (
-                  <div className="scale-125" dangerouslySetInnerHTML={{ __html: it.svg ?? "" }} />
+                  <div className="h-full w-full rounded border border-gray-300" />
                 )}
               </div>
             </button>
@@ -505,42 +453,43 @@ function EquipmentGrid({ items, canRotate = true }: { items: any[]; canRotate?: 
   const activeId = tool.kind === "place_equipment_symbol" ? (tool as any).iconId : null;
 
   return (
-    <div className="mb-4">
-      <div className="grid grid-cols-5 gap-3">
-        {items.map((it) => {
-          const active = activeId === it.id;
+    <div className="grid grid-cols-5 gap-3">
+      {items.map((it) => {
+        const active = activeId === it.id;
 
-          return (
-            <button
-              key={it.id}
-              type="button"
-              onClick={() =>
-                setTool({
-                  kind: "place_equipment_symbol",
-                  iconId: it.id,
-                  thumb: it.thumb,
-                  svg: it.svg ?? "",
-                  iconSize: it.iconSize ?? 1.6,
-                  canRotate: it.canRotate ?? canRotate,
-                } as any)
-              }
-              className={[
-                active ? "border-sky-500 ring-2 ring-sky-200" : "border-gray-300",
-              ].join(" ")}
-            >
-              <div className="mt-1 flex items-center justify-center">
+        return (
+          <button
+            key={it.id}
+            type="button"
+            onClick={() =>
+              setTool({
+                kind: "place_equipment_symbol",
+                iconId: it.id,
+                iconSize: it.iconSize ?? 1,
+                symbolCode: it.symbolCode ?? "",
+                canRotate: it.canRotate ?? canRotate,
+              } as any)
+            }
+            className={[
+              active ? "border-sky-500 ring-2 ring-sky-200" : "border-gray-300",
+            ].join(" ")}
+          >
+            <div className="mt-1 flex items-center justify-center">
+              {it.thumb ? (
                 <img
                   src={it.thumb}
                   alt={it.id}
                   className="h-[96px] w-[96px] object-contain"
                   draggable={false}
                 />
-              </div>
-              <div className="scale-125" dangerouslySetInnerHTML={{ __html: it.svg ?? "" }} />
-            </button>
-          );
-        })}
-      </div>
+              ) : (
+                <div className="scale-125" dangerouslySetInnerHTML={{ __html: it.svg ?? "" }} />
+              )}
+            </div>
+
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -630,10 +579,25 @@ export default function Sidebar() {
               <HeadingList
                 headings={FORMATIONS_HEADINGS}
                 renderByTitle={{
-                  "Unit Symbols (empty)": <FormationUnitPicker />,
+                  "Unit Symbols (empty)": (
+                    <div className="space-y-1">
+                      <div >
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Unknown Warfighting Symbol</div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["Unknown Warfighting Symbol"]} />
+                      </div>
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Unit Symbol (empty)</div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["Unit Symbol (empty)"]} />
+                      </div>
+                    </div>
+                  ),
                   "Large Formations, Command and Control": (
                     <div className="space-y-1">
-                      <div>
+                      <div >
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Combat Units</div>
+                        <FormationGrid title="" items={FORMATION_GROUPS["Combat Units"]} />
+                      </div>
+                      <div className="border-t pt-1">
                         <div className="mb-2 text-[14px] font-medium text-gray-900">Combat Support Units</div>
                         <FormationGrid title="" items={FORMATION_GROUPS["Combat Support Units"]} />
                       </div>
@@ -766,48 +730,48 @@ export default function Sidebar() {
                     <div className="space-y-1">
                       <div>
                         <div className="mb-2 text-[14px] font-medium text-gray-900">Installation</div>
-                        <EquipmentGrid items={EQUIPMENT_GROUPS["Installation"] ?? []} />
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Installation"] ?? []} canRotate={false} />
                       </div>
 
                       <div className="border-t pt-1">
                         <div className="mb-2 text-[14px] font-medium text-gray-900">Raw Material Production / Storage</div>
-                        <EquipmentGrid items={EQUIPMENT_GROUPS["Raw Material Production / Storage"] ?? []} />
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Raw Material Production / Storage"] ?? []} canRotate={false} />
                       </div>
 
                       <div className="border-t pt-1">
                         <div className="mb-2 text-[14px] font-medium text-gray-900">Processing Facility</div>
-                        <EquipmentGrid items={EQUIPMENT_GROUPS["Processing Facility"] ?? []} />
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Processing Facility"] ?? []} canRotate={false} />
                       </div>
 
                       <div className="border-t pt-1">
                         <div className="mb-2 text-[14px] font-medium text-gray-900">Service, Research, Utility Facility</div>
-                        <EquipmentGrid items={EQUIPMENT_GROUPS["Service, Research, Utility Facility"] ?? []} />
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Service, Research, Utility Facility"] ?? []} canRotate={false} />
                       </div>
 
                       <div className="border-t pt-1">
                         <div className="mb-2 text-[14px] font-medium text-gray-900">Military Materiel Facility</div>
-                        <EquipmentGrid items={EQUIPMENT_GROUPS["Military Materiel Facility"] ?? []} />
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Military Materiel Facility"] ?? []} canRotate={false} />
                       </div>
 
                       <div className="border-t pt-1">
                         <div className="mb-2 text-[14px] font-medium text-gray-900">Actions Points</div>
-                        <EquipmentGrid items={EQUIPMENT_GROUPS["Actions Points"] ?? []} />
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Actions Points"] ?? []} canRotate={false} />
                       </div>
 
                       <div className="border-t pt-1">
                         <div className="mb-2 text-[14px] font-medium text-gray-900">Post</div>
-                        <EquipmentGrid items={EQUIPMENT_GROUPS["Post"] ?? []} />
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Post"] ?? []} canRotate={false} />
                       </div>
 
                       <div className="border-t pt-1">
                         <div className="mb-2 text-[14px] font-medium text-gray-900">Medical and Supply Points </div>
-                        <EquipmentGrid items={EQUIPMENT_GROUPS["Medical and Supply Points"] ?? []} />
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Medical and Supply Points"] ?? []} canRotate={false} />
                       </div>
                     </div>
                   ),
                   "Weapons": (
                     <div className="space-y-1">
-                      <div className="border-t pt-1">
+                      <div >
                         <div className="mb-2 text-[14px] font-medium text-gray-900">Fire Weapons and Artillery</div>
                         <EquipmentGrid items={EQUIPMENT_GROUPS["Fire Weapons and Artillery"] ?? []} />
                       </div>
@@ -821,7 +785,167 @@ export default function Sidebar() {
                       </div>
                     </div>
                   ),
-                  
+                  "Aircraft": (
+                    <div className="space-y-1">
+                      <div>
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Fixed Wings</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Fixed Wings"] ?? []} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Rotary Wing</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Rotary Wing"] ?? []} />
+                      </div>
+                    </div>
+                  ),
+                  "Drone (RPV / UAV)": (
+                    <div className="space-y-1">
+                      <div>
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Fixed Wing</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Fixed Wings Drone"] ?? []} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Rotary Wing</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Rotary Wing Drone"] ?? []} />
+                      </div>
+                    </div>
+                  ),
+                  "Ground Vehicle": (
+                    <div className="space-y-1">
+                      <div>
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Armored</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Armored Vehicle"] ?? []} canRotate={true} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Utility Vehicle</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Utility Vehicle"] ?? []} canRotate={true} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Engineer</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Engineer Vehicle"] ?? []} canRotate={true} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Civilian Vehicle</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Civilian Vehicle"] ?? []} canRotate={true} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Other</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Other Vehicle"] ?? []} canRotate={true} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Missile Support</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Missile Support Vehicle"] ?? []} canRotate={true} />
+                      </div>
+                    </div>
+                  ),
+                  "Sea Surface (Ships)": (
+                    <div className="space-y-1">
+                      <div>
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Combatant</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Combatant Ship"] ?? []} canRotate={true} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Amphibious warfare ship</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Amphibious Warfare Ship"] ?? []} canRotate={true} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Mine Warfare Vessel</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Mine Warfare Vessel"] ?? []} canRotate={true} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Patrol</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Patrol Ship"] ?? []} canRotate={true} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Unmanned Surface Vehicle</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Unmanned Surface Vehicle"] ?? []} canRotate={true} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Navy Group</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Navy Group"] ?? []} canRotate={true} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Noncombatant</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Noncombatant Ship"] ?? []} canRotate={true} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Other</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Other Ship"] ?? []} canRotate={true} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Non-Military </div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Non-Military Ship"] ?? []} canRotate={true} />
+                      </div>
+
+                    </div>
+                  ),
+                  "Subservice (Submarines)": (
+                    <div className="space-y-1">
+                      <div>
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Submarines</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Submarine"] ?? []} canRotate={true} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Non-Submarine</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Non-Submarine"] ?? []} canRotate={true} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Underwater Weapons</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Underwater Weapons"] ?? []} canRotate={true} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Sea Mine</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Sea Mine"] ?? []} canRotate={true} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Sea Mine (Ground)</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Sea Mine (Ground)"] ?? []} canRotate={true} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Sea Mine (Moored)</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Sea Mine (Moored) "] ?? []} canRotate={true} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Sea Mine (Floating)</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Sea Mine (Floating)"] ?? []} canRotate={true} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Sea Mine Rising Mine</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Sea Mine Rising Mine"] ?? []} canRotate={true} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Sea Mine (other position)</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Sea Mine (other position)"] ?? []} canRotate={true} />
+                      </div>
+
+                      <div className="border-t pt-1">
+                        <div className="mb-2 text-[14px] font-medium text-gray-900">Decoy</div>
+                        <EquipmentGrid items={EQUIPMENT_GROUPS["Decoy"] ?? []} canRotate={true} />
+                      </div>
+                    </div>
+                  ),
                 }}
               />
             ) : null}

@@ -4,6 +4,7 @@
 import { v4 as uuidv4 } from "uuid";
 import type { MapModuleCtx } from "./mapContext";
 import { useToolStore } from "@/store/useToolStore";
+import { sidcToSvg } from "@/lib/milsymbol";
 
 async function ensureIconFromUrl(map: any, iconId: string, url: string, size = 110) {
   if (map.hasImage(iconId)) return;
@@ -55,19 +56,49 @@ export async function registerFormations(ctx: MapModuleCtx) {
     const tool: any = useToolStore.getState().tool;
     if (tool.kind !== "place_formation_unit") return;
 
-    const id = uuidv4();
+    if (tool.symbolCode && String(tool.symbolCode).trim()) {
+      const sidc = String(tool.symbolCode).trim();
+      const iconId = tool.iconId || `sidc:${sidc}`;
+      const svg = sidcToSvg(sidc, { size: 128 });
+
+      if (!svg || svg.trim().length === 0) {
+        console.warn("sidcToSvg returned empty for:", sidc);
+        return;
+      }
+
+      await ctx.ensureIconFromSvg(map, iconId, svg, 128);
+
+      const feat: any = {
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [e.lngLat.lng, e.lngLat.lat] },
+        properties: {
+          gkind: "formation_unit",
+          id: uuidv4(),
+          iconId,
+          iconSize: tool.iconSize ?? 1,
+          symbolCode: sidc,
+          shortName: tool.shortName ?? "",
+          abbreviation: tool.abbreviation ?? "",
+          fullName: tool.fullName ?? "",
+          rot: 0,
+        },
+      };
+
+      ctx.setTac({
+        type: "FeatureCollection",
+        features: [...ctx.tacRef.current.features, feat],
+      });
+      return;
+    }
 
     if (tool.thumb) {
-      await ensureIconFromUrl(map, tool.iconId, tool.thumb, 110);
-    }
-    else if (map.hasImage(tool.iconId)) {
-      
-    }
-    else if (tool.svg && String(tool.svg).trim().length > 0) {
-      await ctx.ensureIconFromSvg(map, tool.iconId, tool.svg, 110);
-    }
-    else {
-      console.warn("Formation icon has no thumb/svg:", tool.iconId);
+      await ensureIconFromUrl(map, tool.iconId, tool.thumb, 128);
+    } else if (map.hasImage(tool.iconId)) {
+      // ok
+    } else if (tool.svg && String(tool.svg).trim().length > 0) {
+      await ctx.ensureIconFromSvg(map, tool.iconId, tool.svg, 128);
+    } else {
+      console.warn("Formation icon has no thumb/svg/symbolCode:", tool.iconId);
       return;
     }
 
@@ -76,9 +107,14 @@ export async function registerFormations(ctx: MapModuleCtx) {
       geometry: { type: "Point", coordinates: [e.lngLat.lng, e.lngLat.lat] },
       properties: {
         gkind: "formation_unit",
-        id,
+        id: uuidv4(),
         iconId: tool.iconId,
         iconSize: tool.iconSize ?? 1,
+        symbolCode: tool.symbolCode ?? "",
+        shortName: tool.shortName ?? "",
+        abbreviation: tool.abbreviation ?? "",
+        fullName: tool.fullName ?? "",
+        rot: 0,
       },
     };
 

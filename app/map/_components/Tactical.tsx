@@ -7,20 +7,15 @@ import { v4 as uuidv4 } from "uuid";
 import type { Feature, LineString, Point as GPoint } from "geojson";
 import type { MapModuleCtx } from "./mapContext";
 import { useToolStore } from "@/store/useToolStore";
+import { sidcToSvg } from "@/lib/milsymbol";
 
 type LngLat = { lng: number; lat: number };
 
-const COLOR_WP = "#2f7fff";
-const COLOR_R = "#7a1b6d";
 const COLOR_DEF = "#7a1b6d";
-const COLOR_CATK = "#7a1b6d";
+const COLOR_TASK = "#4DAAFF";
 
-function getTaskColor(taskId: string) {
-  if (taskId === "WP") return COLOR_WP;
-  if (taskId === "R") return COLOR_R;
-  if (taskId === "CATK") return COLOR_CATK;
-  return COLOR_WP;
-}
+const taskPtsRef: { current: LngLat[] } = { current: [] };
+const isDrawingTaskRef: { current: boolean } = { current: false };
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -43,177 +38,6 @@ function lineBearing(a: Feature<GPoint>, b: Feature<GPoint>) {
   return turf.bearing(a as any, b as any);
 }
 
-function bearingDeg(a: [number, number], b: [number, number]) {
-  return turf.bearing(turf.point(a), turf.point(b));
-}
-
-/** ===== CATK corridor arrow ===== */
-function buildCATK2525(start: [number, number], end: [number, number]) {
-  const base = turf.lineString([start, end]);
-  const lenKm = turf.length(base, { units: "kilometers" });
-  if (lenKm <= 0.001) return null;
-
-  const brg = turf.bearing(turf.point(start), turf.point(end));
-  const widthKm = clamp(lenKm * 0.18, 1.0, 25);
-  const headLenKm = clamp(lenKm * 0.28, widthKm * 1.2, widthKm * 3.0);
-  const headWidthKm = clamp(widthKm * 1.8, widthKm * 1.4, widthKm * 2.4);
-
-  const tip = turf.point(end);
-  const back = turf.destination(tip, headLenKm, brg + 180, { units: "kilometers" });
-
-  const leftStart = turf.destination(turf.point(start), widthKm / 2, brg + 90, { units: "kilometers" });
-  const rightStart = turf.destination(turf.point(start), widthKm / 2, brg - 90, { units: "kilometers" });
-
-  const leftHeadCorner = turf.destination(back, headWidthKm / 2, brg + 90, { units: "kilometers" });
-  const rightHeadCorner = turf.destination(back, headWidthKm / 2, brg - 90, { units: "kilometers" });
-
-  const neckLenKm = clamp(headLenKm * 0.35, 0.6, headLenKm * 0.6);
-  const neck = turf.destination(back, neckLenKm, brg + 180, { units: "kilometers" });
-  const leftNeck = turf.destination(neck, widthKm / 2, brg + 90, { units: "kilometers" });
-  const rightNeck = turf.destination(neck, widthKm / 2, brg - 90, { units: "kilometers" });
-
-  const leftLine: [number, number][] = [
-    leftStart.geometry.coordinates as any,
-    leftNeck.geometry.coordinates as any,
-    leftHeadCorner.geometry.coordinates as any,
-    tip.geometry.coordinates as any,
-  ];
-
-  const rightLine: [number, number][] = [
-    rightStart.geometry.coordinates as any,
-    rightNeck.geometry.coordinates as any,
-    rightHeadCorner.geometry.coordinates as any,
-    tip.geometry.coordinates as any,
-  ];
-
-  const mid = turf.along(base, lenKm * 0.55, { units: "kilometers" });
-
-  const vertex = [
-    leftStart.geometry.coordinates,
-    leftHeadCorner.geometry.coordinates,
-    tip.geometry.coordinates,
-    rightHeadCorner.geometry.coordinates,
-    rightStart.geometry.coordinates,
-  ] as [number, number][];
-
-  return {
-    geometry: {
-      type: "MultiLineString" as const,
-      coordinates: [leftLine, rightLine],
-    },
-    rot: brg,
-    mid,
-    vertex,
-  };
-}
-
-/** ===== Hook arc builder (screen space) ===== */
-function rot90(v: { x: number; y: number }) {
-  return { x: -v.y, y: v.x };
-}
-function norm(v: { x: number; y: number }) {
-  const m = Math.hypot(v.x, v.y) || 1;
-  return { x: v.x / m, y: v.y / m };
-}
-function dot(a: { x: number; y: number }, b: { x: number; y: number }) {
-  return a.x * b.x + a.y * b.y;
-}
-
-function buildHookArcLngLat(map: Map, p0: [number, number], p1: [number, number], p2: [number, number], steps = 56): [number, number][] {
-  const P0 = map.project({ lng: p0[0], lat: p0[1] });
-  const P1 = map.project({ lng: p1[0], lat: p1[1] });
-  const P2 = map.project({ lng: p2[0], lat: p2[1] });
-
-  const t = norm({ x: P1.x - P0.x, y: P1.y - P0.y });
-  let r1 = rot90(t);
-
-  const d = { x: P2.x - P1.x, y: P2.y - P1.y };
-  let denom = 2 * dot(d, r1);
-
-  if (Math.abs(denom) < 1e-6) {
-    r1 = { x: -r1.x, y: -r1.y };
-    denom = 2 * dot(d, r1);
-  }
-
-  let R = dot(d, d) / denom;
-  if (!isFinite(R) || R <= 0) {
-    r1 = { x: -r1.x, y: -r1.y };
-    denom = 2 * dot(d, r1);
-    R = dot(d, d) / denom;
-  }
-
-  if (!isFinite(R) || R <= 1) return [p1, p2];
-
-  const C = { x: P1.x + r1.x * R, y: P1.y + r1.y * R };
-  const a1 = Math.atan2(P1.y - C.y, P1.x - C.x);
-  const a2 = Math.atan2(P2.y - C.y, P2.x - C.x);
-
-  const vStart = norm({ x: P1.x - C.x, y: P1.y - C.y });
-  const tanCCW = rot90(vStart);
-  const sameDir = dot(tanCCW, t) > 0;
-
-  let start = a1;
-  let end = a2;
-  const twoPi = Math.PI * 2;
-
-  if (sameDir) while (end < start) end += twoPi;
-  else while (end > start) end -= twoPi;
-
-  const pts: [number, number][] = [];
-  for (let i = 0; i <= steps; i++) {
-    const tt = i / steps;
-    const ang = start + (end - start) * tt;
-    const x = C.x + Math.cos(ang) * Math.abs(R);
-    const y = C.y + Math.sin(ang) * Math.abs(R);
-    const ll = map.unproject([x, y]);
-    pts.push([ll.lng, ll.lat]);
-  }
-  return pts;
-}
-
-function buildWpRFeatures(map: Map, taskId: "WP" | "R", id: string, pts: [number, number][], color: string) {
-  const [p0, p1, p2] = pts;
-
-  const straight: [number, number][] = [p0, p1];
-  const arc = buildHookArcLngLat(map, p0, p1, p2, 56);
-  const coords: [number, number][] = [...straight, ...arc.slice(1)];
-
-  const P0 = map.project({ lng: p0[0], lat: p0[1] });
-  const P1 = map.project({ lng: p1[0], lat: p1[1] });
-  const lx = P0.x + (P1.x - P0.x) * 0.55;
-  const ly = P0.y + (P1.y - P0.y) * 0.55;
-  const llLabel = map.unproject([lx, ly]);
-
-  const arrowBearing = bearingDeg(p1, p0);
-
-  const lineFeat: any = {
-    type: "Feature",
-    geometry: { type: "LineString", coordinates: coords },
-    properties: { gkind: "line", taskId, id, color, width: 4, dash: 0 },
-  };
-
-  const labelFeat: any = {
-    type: "Feature",
-    geometry: { type: "Point", coordinates: [llLabel.lng, llLabel.lat] },
-    properties: { gkind: "label", text: taskId, color, rot: bearingDeg(p0, p1), id, taskId },
-  };
-
-  const arrowFeat: any = {
-    type: "Feature",
-    geometry: { type: "Point", coordinates: p0 },
-    properties: { gkind: "arrow", bearing: arrowBearing, color, id, taskId },
-  };
-
-  const ctrlPts: any[] = pts.map((c, idx) => ({
-    type: "Feature",
-    geometry: { type: "Point", coordinates: c },
-    properties: { gkind: "task_pt", taskId, id, idx, isCtrl: true },
-  }));
-
-  return [lineFeat, labelFeat, arrowFeat, ...ctrlPts];
-}
-
-/** ===== defensive icons ===== */
 async function svgToImageData(svg: string, size = 32) {
   const svg64 = btoa(unescape(encodeURIComponent(svg)));
   const imgSrc = `data:image/svg+xml;base64,${svg64}`;
@@ -239,127 +63,114 @@ async function svgToImageData(svg: string, size = 32) {
   return ctx.getImageData(0, 0, size, size);
 }
 
+function hasImageSafe(map: Map, id: string) {
+  const m: any = map as any;
+  if (typeof m.hasImage === "function") return !!m.hasImage(id);
+  if (m.style && typeof m.style.getImage === "function") return !!m.style.getImage(id);
+  if (typeof m.listImages === "function") {
+    const imgs = m.listImages();
+    return Array.isArray(imgs) ? imgs.includes(id) : false;
+  }
+  return false;
+}
+
 async function ensureDefIcons(map: Map) {
-  if (!map.hasImage("def-x")) {
+  if (!hasImageSafe(map, "def-x")) {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">
       <path d="M7 7 L25 25" stroke="${COLOR_DEF}" stroke-width="4" stroke-linecap="round"/>
       <path d="M25 7 L7 25" stroke="${COLOR_DEF}" stroke-width="4" stroke-linecap="round"/>
     </svg>`;
     const data = await svgToImageData(svg, 32);
-    map.addImage("def-x", data, { pixelRatio: 2 });
+    if (!hasImageSafe(map, "def-x")) map.addImage("def-x", data, { pixelRatio: 2 });
   }
 
-  if (!map.hasImage("def-tick")) {
+  if (!hasImageSafe(map, "def-tick")) {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">
       <path d="M16 6 L16 20" stroke="${COLOR_DEF}" stroke-width="4" stroke-linecap="round"/>
     </svg>`;
     const data = await svgToImageData(svg, 32);
-    map.addImage("def-tick", data, { pixelRatio: 2 });
+    if (!hasImageSafe(map, "def-tick")) map.addImage("def-tick", data, { pixelRatio: 2 });
   }
 
-  if (!map.hasImage("def-tooth")) {
+  if (!hasImageSafe(map, "def-tooth")) {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">
       <path d="M6 24 L16 7 L26 24 Z" fill="${COLOR_DEF}"/>
     </svg>`;
     const data = await svgToImageData(svg, 32);
-    map.addImage("def-tooth", data, { pixelRatio: 2 });
+    if (!hasImageSafe(map, "def-tooth")) map.addImage("def-tooth", data, { pixelRatio: 2 });
   }
 }
 
 export async function registerTactical(ctx: MapModuleCtx) {
-  const { map } = ctx;
+  const { map, ensureIconFromSvg } = ctx;
 
   await ensureDefIcons(map);
   ctx.ensureSourcesAndLayers(map);
 
-  // local refs (อยู่ใน module)
-  const taskStartRef: { current: LngLat | null } = { current: null };
-
   const defPtsRef: { current: LngLat[] } = { current: [] };
   const isDrawingDefRef: { current: boolean } = { current: false };
 
-  const catkStartRef: { current: LngLat | null } = { current: null };
-  const isDraggingCATKRef: { current: boolean } = { current: false };
-
-  // ===== cursor + disable zoom/pan while drawing =====
   const applyCursor = () => {
-    const t = useToolStore.getState().tool;
+    const t: any = useToolStore.getState().tool;
     const canvas = map.getCanvas();
 
     const drawing =
       t.kind === "draw_task" ||
       t.kind === "draw_defensive" ||
       t.kind === "place_commando" ||
-      t.kind === "place_symbol";
+      t.kind === "place_symbol" ||
+      t.kind === "draw_area";
 
     canvas.style.cursor = drawing ? "crosshair" : "";
 
+    if (drawing) map.dragPan.disable();
+    else map.dragPan.enable();
+
     if (t.kind === "draw_defensive" || t.kind === "draw_task") map.doubleClickZoom.disable();
     else map.doubleClickZoom.enable();
-
-    if (t.kind === "draw_task" && t.taskId === "CATK" && isDraggingCATKRef.current) map.dragPan.disable();
-    else map.dragPan.enable();
   };
 
   applyCursor();
   const unsubTool = useToolStore.subscribe(applyCursor);
 
-  // ===== place_commando =====
-  const onClickCommando = async (e: any) => {
-    const tool = useToolStore.getState().tool;
-    if (tool.kind !== "place_commando") return;
+  const makeIconId = (sidc: string) => `sidc:${sidc}`;
 
+  // ========= PLACE SYMBOL (single click) =========
+  const onClickPlaceSymbol = async (e: any) => {
+    const tool: any = useToolStore.getState().tool;
+    if (tool.kind !== "place_symbol") return;
+    if (!tool.sidc) return;
+
+    const p: LngLat = { lng: e.lngLat.lng, lat: e.lngLat.lat };
     const id = uuidv4();
-    const lng = e.lngLat.lng;
-    const lat = e.lngLat.lat;
 
-    await ctx.ensureIconFromSvg(map, (tool as any).iconId, (tool as any).svg, 110);
+    const iconId = makeIconId(tool.sidc);
+    const svg = sidcToSvg(tool.sidc);
+    await ensureIconFromSvg(map, iconId, svg);
 
-    const feat: any = {
+    const f = {
       type: "Feature",
-      geometry: { type: "Point", coordinates: [lng, lat] },
+      geometry: { type: "Point", coordinates: [p.lng, p.lat] },
       properties: {
-        gkind: "commando_icon",
+        gkind: "symbol",
         id,
-        iconId: (tool as any).iconId,
-        label: (tool as any).label ?? "",
-        iconSize: 1.4,
+        sidc: tool.sidc,
+        iconId,
+        iconSize: tool.iconSize ?? 1.4,
+        canRotate: true,
+        rot: 0,
       },
-    };
+    } as any;
 
     ctx.setTac({
       type: "FeatureCollection",
-      features: [...ctx.tacRef.current.features, feat],
+      features: [...ctx.tacRef.current.features, f],
     });
   };
 
-  // ===== WP/R preview mousemove =====
-  const onMoveWpR = (e: any) => {
-    const tool = useToolStore.getState().tool;
-
-    if (tool.kind === "draw_task" && tool.taskId !== "CATK") {
-      if (!taskStartRef.current) return;
-
-      const start = taskStartRef.current;
-      const end = { lng: e.lngLat.lng, lat: e.lngLat.lat };
-      const color = getTaskColor(tool.taskId);
-
-      ctx.setDraw({
-        type: "FeatureCollection",
-        features: [
-          {
-            type: "Feature",
-            geometry: { type: "LineString", coordinates: [[start.lng, start.lat], [end.lng, end.lat]] },
-            properties: { gkind: "draw_line", color },
-          } as any,
-        ],
-      });
-    }
-  };
-
-  // ===== DEF preview =====
+  // ========= DEFENSIVE preview =========
   const onMoveDef = (e: any) => {
-    const tool = useToolStore.getState().tool;
+    const tool: any = useToolStore.getState().tool;
     if (tool.kind !== "draw_defensive") return;
     if (!isDrawingDefRef.current) return;
     if (defPtsRef.current.length === 0) return;
@@ -384,153 +195,36 @@ export async function registerTactical(ctx: MapModuleCtx) {
     ctx.setDraw({ type: "FeatureCollection", features: [previewLine, ...previewPts] });
   };
 
-  // ===== CLICK logic: WP/R + DEF add points =====
-  const onClickMain = (e: any) => {
-    const tool = useToolStore.getState().tool;
+  const onClickDefensive = (e: any) => {
+    const tool: any = useToolStore.getState().tool;
+    if (tool.kind !== "draw_defensive") return;
 
-    // WP/R (2 clicks)
-    if (tool.kind === "draw_task" && (tool.taskId === "WP" || tool.taskId === "R")) {
-      const now: LngLat = { lng: e.lngLat.lng, lat: e.lngLat.lat };
+    const p: LngLat = { lng: e.lngLat.lng, lat: e.lngLat.lat };
 
-      if (!taskStartRef.current) {
-        taskStartRef.current = now;
-        return;
-      }
-
-      const p0: [number, number] = [taskStartRef.current.lng, taskStartRef.current.lat];
-      const p1: [number, number] = [now.lng, now.lat];
-
-      const baseBrg = bearingDeg(p0, p1);
-      const dist = turf.distance(turf.point(p0), turf.point(p1), { units: "kilometers" });
-
-      const p2 = turf
-        .destination(turf.point(p1), dist, baseBrg - 90, { units: "kilometers" })
-        .geometry.coordinates as [number, number];
-
-      const id = uuidv4();
-      const color = getTaskColor(tool.taskId);
-
-      const feats = buildWpRFeatures(map, tool.taskId as "WP" | "R", id, [p0, p1, p2], color);
-
-      ctx.setTac({
-        type: "FeatureCollection",
-        features: [...ctx.tacRef.current.features, ...feats],
-      });
-
-      taskStartRef.current = null;
-      ctx.setDraw({ type: "FeatureCollection", features: [] });
-      return;
+    if (!isDrawingDefRef.current) {
+      isDrawingDefRef.current = true;
+      defPtsRef.current = [p];
+    } else {
+      defPtsRef.current = [...defPtsRef.current, p];
     }
 
-    // Defensive add points
-    if (tool.kind === "draw_defensive") {
-      const p: LngLat = { lng: e.lngLat.lng, lat: e.lngLat.lat };
+    const pts = defPtsRef.current;
 
-      if (!isDrawingDefRef.current) {
-        isDrawingDefRef.current = true;
-        defPtsRef.current = [p];
-      } else {
-        defPtsRef.current = [...defPtsRef.current, p];
-      }
-
-      const pts = defPtsRef.current;
-
-      const previewLine = {
-        type: "Feature",
-        geometry: { type: "LineString", coordinates: pts.map((x) => [x.lng, x.lat]) },
-        properties: { gkind: "draw_line", color: COLOR_DEF },
-      } as any;
-
-      const previewPts = pts.map((x) => ({
-        type: "Feature",
-        geometry: { type: "Point", coordinates: [x.lng, x.lat] },
-        properties: { gkind: "draw_pt" },
-      })) as any[];
-
-      ctx.setDraw({ type: "FeatureCollection", features: [previewLine, ...previewPts] });
-    }
-  };
-
-  // ===== CATK drag =====
-  const previewCATK = (start: LngLat, end: LngLat) => {
-    const built = buildCATK2525([start.lng, start.lat], [end.lng, end.lat]);
-    if (!built) return;
-
-    const preview: any = {
+    const previewLine = {
       type: "Feature",
-      geometry: built.geometry,
-      properties: { gkind: "draw_line", color: COLOR_CATK },
-    };
+      geometry: { type: "LineString", coordinates: pts.map((x) => [x.lng, x.lat]) },
+      properties: { gkind: "draw_line", color: COLOR_DEF },
+    } as any;
 
-    ctx.setDraw({ type: "FeatureCollection", features: [preview] });
-  };
-
-  const commitCATK = (start: LngLat, end: LngLat) => {
-    const built = buildCATK2525([start.lng, start.lat], [end.lng, end.lat]);
-    if (!built) return;
-
-    const id = uuidv4();
-
-    const lineFeat: any = {
+    const previewPts = pts.map((x) => ({
       type: "Feature",
-      geometry: built.geometry,
-      properties: { gkind: "line", color: COLOR_CATK, width: 4, dash: 1, taskId: "CATK", id },
-    };
+      geometry: { type: "Point", coordinates: [x.lng, x.lat] },
+      properties: { gkind: "draw_pt" },
+    })) as any[];
 
-    const labelFeat: any = {
-      type: "Feature",
-      geometry: built.mid.geometry,
-      properties: { gkind: "label", text: "CATK", color: COLOR_CATK, rot: built.rot, id },
-    };
-
-    const vertexPts: any[] = built.vertex.map((c, idx) => ({
-      type: "Feature",
-      geometry: { type: "Point", coordinates: c },
-      properties: { gkind: "task_pt", taskId: "CATK", idx, id },
-    }));
-
-    ctx.setTac({
-      type: "FeatureCollection",
-      features: [...ctx.tacRef.current.features, lineFeat, labelFeat, ...vertexPts],
-    });
+    ctx.setDraw({ type: "FeatureCollection", features: [previewLine, ...previewPts] });
   };
 
-  const onMouseDown = (e: any) => {
-    const tool = useToolStore.getState().tool;
-    if (!(tool.kind === "draw_task" && tool.taskId === "CATK")) return;
-
-    isDraggingCATKRef.current = true;
-    catkStartRef.current = { lng: e.lngLat.lng, lat: e.lngLat.lat };
-    map.dragPan.disable();
-  };
-
-  const onMouseMove = (e: any) => {
-    const tool = useToolStore.getState().tool;
-    if (!(tool.kind === "draw_task" && tool.taskId === "CATK")) return;
-    if (!isDraggingCATKRef.current) return;
-    if (!catkStartRef.current) return;
-
-    previewCATK(catkStartRef.current, { lng: e.lngLat.lng, lat: e.lngLat.lat });
-  };
-
-  const onMouseUp = (e: any) => {
-    const tool = useToolStore.getState().tool;
-    if (!(tool.kind === "draw_task" && tool.taskId === "CATK")) return;
-    if (!isDraggingCATKRef.current) return;
-    if (!catkStartRef.current) return;
-
-    const start = catkStartRef.current;
-    const end = { lng: e.lngLat.lng, lat: e.lngLat.lat };
-
-    isDraggingCATKRef.current = false;
-    catkStartRef.current = null;
-
-    map.dragPan.enable();
-    commitCATK(start, end);
-    ctx.setDraw({ type: "FeatureCollection", features: [] });
-  };
-
-  // ===== RIGHT CLICK finish defensive =====
   const finishDEF = (toolDefId: string) => {
     const pts = defPtsRef.current;
     if (pts.length < 2) {
@@ -544,13 +238,15 @@ export async function registerTactical(ctx: MapModuleCtx) {
     const baseLine = turf.lineString(coords);
 
     const id = uuidv4();
+
     const base = {
       type: "Feature",
       geometry: baseLine.geometry,
       properties: { gkind: "line", color: COLOR_DEF, width: 4, dash: 0, defId: toolDefId, id },
     } as any;
 
-    const ptsAlong = samplePointsAlongLine(baseLine as any, Math.max(0.3, turf.length(baseLine) / 40));
+    const step = Math.max(0.3, turf.length(baseLine) / 40);
+    const ptsAlong = samplePointsAlongLine(baseLine as any, step);
     const patternPts: any[] = [];
 
     for (let i = 0; i < ptsAlong.length - 1; i++) {
@@ -565,6 +261,7 @@ export async function registerTactical(ctx: MapModuleCtx) {
           properties: { gkind: "def_pt", pt: "x", rot: brg, color: COLOR_DEF, id },
         });
       }
+
       if (toolDefId === "trench") {
         patternPts.push({
           type: "Feature",
@@ -572,9 +269,12 @@ export async function registerTactical(ctx: MapModuleCtx) {
           properties: { gkind: "def_pt", pt: "tick", rot: brg + 90, color: COLOR_DEF, id },
         });
       }
+
       if (toolDefId === "teeth") {
         const p = a.geometry.coordinates as [number, number];
-        const offset = turf.destination(turf.point(p), 0.8, brg + 90, { units: "kilometers" });
+        const offset = turf.destination(turf.point(p), clamp(step * 2.0, 0.6, 1.2), brg + 90, {
+          units: "kilometers",
+        });
         patternPts.push({
           type: "Feature",
           geometry: offset.geometry,
@@ -593,23 +293,166 @@ export async function registerTactical(ctx: MapModuleCtx) {
     ctx.setDraw({ type: "FeatureCollection", features: [] });
   };
 
-  const onRightClick = (e: any) => {
-    e.originalEvent?.preventDefault?.();
-    const tool = useToolStore.getState().tool;
-    if (tool.kind === "draw_defensive") finishDEF((tool as any).defId);
+  // ========= TASK preview =========
+  const onClickTask = (e: any) => {
+    const tool: any = useToolStore.getState().tool;
+    if (tool.kind !== "draw_task") return;
+
+    const p: LngLat = { lng: e.lngLat.lng, lat: e.lngLat.lat };
+
+    if (!isDrawingTaskRef.current) {
+      isDrawingTaskRef.current = true;
+      taskPtsRef.current = [p];
+    } else {
+      taskPtsRef.current = [...taskPtsRef.current, p];
+    }
+
+    const pts = taskPtsRef.current;
+
+    const previewLine = {
+      type: "Feature",
+      geometry: { type: "LineString", coordinates: pts.map((x) => [x.lng, x.lat]) },
+      properties: { gkind: "draw_line", color: COLOR_TASK },
+    } as any;
+
+    const previewPts = pts.map((x) => ({
+      type: "Feature",
+      geometry: { type: "Point", coordinates: [x.lng, x.lat] },
+      properties: { gkind: "draw_pt" },
+    })) as any[];
+
+    ctx.setDraw({ type: "FeatureCollection", features: [previewLine, ...previewPts] });
   };
 
-  // ===== ESC cancel =====
+  const onMoveTask = (e: any) => {
+    const tool: any = useToolStore.getState().tool;
+    if (tool.kind !== "draw_task") return;
+    if (!isDrawingTaskRef.current) return;
+    if (taskPtsRef.current.length === 0) return;
+
+    const pts = taskPtsRef.current;
+
+    const previewLine = {
+      type: "Feature",
+      geometry: {
+        type: "LineString",
+        coordinates: [...pts.map((p) => [p.lng, p.lat]), [e.lngLat.lng, e.lngLat.lat]],
+      },
+      properties: { gkind: "draw_line", color: COLOR_TASK },
+    } as any;
+
+    const previewPts = pts.map((p) => ({
+      type: "Feature",
+      geometry: { type: "Point", coordinates: [p.lng, p.lat] },
+      properties: { gkind: "draw_pt" },
+    })) as any[];
+
+    ctx.setDraw({ type: "FeatureCollection", features: [previewLine, ...previewPts] });
+  };
+
+  // ✅ แก้ตรงนี้: finishTask ให้สร้าง “1 symbol ต่อ 1 งาน” (ไม่ปูเป็นพรืด)
+  const finishTask = async () => {
+    const tool: any = useToolStore.getState().tool;
+    const pts = taskPtsRef.current;
+
+    if (pts.length < 2) {
+      isDrawingTaskRef.current = false;
+      taskPtsRef.current = [];
+      ctx.setDraw({ type: "FeatureCollection", features: [] });
+      return;
+    }
+
+    const coords = pts.map((p) => [p.lng, p.lat]) as [number, number][];
+    const baseLine = turf.lineString(coords);
+
+    const id = uuidv4();
+
+    const base = {
+      type: "Feature",
+      geometry: baseLine.geometry,
+      properties: { gkind: "line", color: COLOR_TASK, width: 4, id },
+    } as any;
+
+    // icon สำหรับ task
+    const taskSvg: string | undefined =
+      typeof tool.thumbSvg === "string" && tool.thumbSvg.trim() ? tool.thumbSvg : undefined;
+
+    const taskSidc: string | undefined =
+      typeof tool.sidc === "string" && tool.sidc.trim() ? tool.sidc : undefined;
+
+    // ถ้าไม่มี icon ก็เซฟแค่เส้น
+    if (!taskSvg && !taskSidc) {
+      ctx.setTac({
+        type: "FeatureCollection",
+        features: [...ctx.tacRef.current.features, base],
+      });
+
+      isDrawingTaskRef.current = false;
+      taskPtsRef.current = [];
+      ctx.setDraw({ type: "FeatureCollection", features: [] });
+      return;
+    }
+
+    const iconId = taskSidc ? makeIconId(taskSidc) : `task:${tool.taskId || "unknown"}`;
+    const svg = taskSvg ?? sidcToSvg(taskSidc!);
+    await ensureIconFromSvg(map, iconId, svg);
+
+    // วาง 1 จุดที่ “กึ่งกลางเส้น”
+    const lenKm = turf.length(baseLine as any, { units: "kilometers" });
+    const mid = turf.along(baseLine as any, lenKm / 2, { units: "kilometers" }) as any;
+
+    // หามุมจากจุดแรก -> จุดสุดท้าย (กันเส้นหักหลายท่อน)
+    const a = turf.point(coords[0]) as any;
+    const b = turf.point(coords[coords.length - 1]) as any;
+    const brg = turf.bearing(a, b);
+
+    const sym = {
+      type: "Feature",
+      geometry: mid.geometry,
+      properties: {
+        gkind: "tac_task_symbol",
+        id,
+        iconId,
+        rot: brg,
+        iconSize: tool.iconSize ?? 1.4,
+      },
+    } as any;
+
+    ctx.setTac({
+      type: "FeatureCollection",
+      features: [...ctx.tacRef.current.features, base, sym],
+    });
+
+    isDrawingTaskRef.current = false;
+    taskPtsRef.current = [];
+    ctx.setDraw({ type: "FeatureCollection", features: [] });
+  };
+
+  const onContextMenu = (e: any) => {
+    e.originalEvent?.preventDefault?.();
+    const tool: any = useToolStore.getState().tool;
+
+    if (tool.kind === "draw_defensive") finishDEF(String(tool.defId));
+    if (tool.kind === "draw_task") void finishTask();
+
+    if (
+      tool.kind === "place_symbol" ||
+      tool.kind === "place_commando" ||
+      tool.kind === "place_formation_unit" ||
+      tool.kind === "place_equipment_symbol"
+    ) {
+      useToolStore.getState().setTool({ kind: "none" } as any);
+    }
+  };
+
   const onKeyDown = (ev: KeyboardEvent) => {
     if (ev.key !== "Escape") return;
 
-    taskStartRef.current = null;
-
-    isDraggingCATKRef.current = false;
-    catkStartRef.current = null;
-
     isDrawingDefRef.current = false;
     defPtsRef.current = [];
+
+    isDrawingTaskRef.current = false;
+    taskPtsRef.current = [];
 
     ctx.setDraw({ type: "FeatureCollection", features: [] });
     useToolStore.getState().setTool({ kind: "none" } as any);
@@ -617,33 +460,38 @@ export async function registerTactical(ctx: MapModuleCtx) {
     map.dragPan.enable();
   };
 
-  // register all listeners
-  map.on("click", onClickCommando);
-  map.on("mousemove", onMoveWpR);
+  // ✅ ใช้ handler ตัวเดียวตอน on/off (สำคัญมาก)
+  const onDblClickFinishTask = (e: any) => {
+    e?.preventDefault?.();
+    void finishTask();
+  };
+
+  // listeners
   map.on("mousemove", onMoveDef);
-  map.on("click", onClickMain);
+  map.on("click", onClickDefensive);
 
-  map.on("mousedown", onMouseDown);
-  map.on("mousemove", onMouseMove);
-  map.on("mouseup", onMouseUp);
+  map.on("click", onClickTask);
+  map.on("mousemove", onMoveTask);
+  map.on("dblclick", onDblClickFinishTask);
 
-  map.on("contextmenu", onRightClick);
+  map.on("click", onClickPlaceSymbol);
+
+  map.on("contextmenu", onContextMenu);
   window.addEventListener("keydown", onKeyDown);
 
-  // cleanup
   return () => {
     unsubTool?.();
 
-    map.off("click", onClickCommando);
-    map.off("mousemove", onMoveWpR);
     map.off("mousemove", onMoveDef);
-    map.off("click", onClickMain);
+    map.off("click", onClickDefensive);
 
-    map.off("mousedown", onMouseDown);
-    map.off("mousemove", onMouseMove);
-    map.off("mouseup", onMouseUp);
+    map.off("click", onClickTask);
+    map.off("mousemove", onMoveTask);
+    map.off("dblclick", onDblClickFinishTask);
 
-    map.off("contextmenu", onRightClick);
+    map.off("click", onClickPlaceSymbol);
+
+    map.off("contextmenu", onContextMenu);
     window.removeEventListener("keydown", onKeyDown);
   };
 }

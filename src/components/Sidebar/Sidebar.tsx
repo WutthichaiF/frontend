@@ -17,6 +17,7 @@ import { EQUIPMENT_GROUPS } from "../../lib/equipmentIcons";
 import { title } from "process";
 import { DiVim } from "react-icons/di";
 import { count } from "console";
+import { TASKS } from "@/lib/Tactical";
 type TopTab = "gallery" | "search";
 type CategoryTab =
   | "favorites"
@@ -111,46 +112,6 @@ const BASE_DEPLOY_SYMBOLS = [
   { label: "ASLT", sidc: "GFPGPOAA--------" },
 ];
 
-const TASKS = [
-  {
-    id: "WP" as const,
-    thumbSvg: `<svg viewBox="0 0 220 70" xmlns="http://www.w3.org/2000/svg" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="6" y="6" width="208" height="58" rx="10" fill="white" stroke="#d1d5db"/>
-      <path d="M52 35 L152 35" fill="none" stroke="#2f7fff" stroke-width="5"/>
-      <path d="M52 35 L66 27" fill="none" stroke="#2f7fff" stroke-width="5"/>
-      <path d="M52 35 L66 43" fill="none" stroke="#2f7fff" stroke-width="5"/>
-      <path d="M152 35 C 188 35, 190 10, 166 10 C 148 10, 148 26, 152 35" fill="none" stroke="#2f7fff" stroke-width="5"/>
-      <circle cx="52" cy="35" r="4.2" fill="#ff3b30" stroke="#fff" stroke-width="2"/>
-      <circle cx="152" cy="35" r="4.2" fill="#ff3b30" stroke="#fff" stroke-width="2"/>
-      <circle cx="166" cy="10" r="4.2" fill="#ff3b30" stroke="#fff" stroke-width="2"/>
-      <text x="110" y="30" text-anchor="middle" font-size="16" font-weight="800" fill="#2f7fff">WP</text>
-    </svg>`,
-  },
-  {
-    id: "R" as const,
-    thumbSvg: `<svg viewBox="0 0 220 70" xmlns="http://www.w3.org/2000/svg" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="6" y="6" width="208" height="58" rx="10" fill="white" stroke="#d1d5db"/>
-      <path d="M52 35 L152 35" fill="none" stroke="#7a1b6d" stroke-width="5"/>
-      <path d="M52 35 L66 27" fill="none" stroke="#7a1b6d" stroke-width="5"/>
-      <path d="M52 35 L66 43" fill="none" stroke="#7a1b6d" stroke-width="5"/>
-      <path d="M152 35 C 188 35, 190 10, 166 10 C 148 10, 148 26, 152 35" fill="none" stroke="#7a1b6d" stroke-width="5"/>
-      <circle cx="52" cy="35" r="4.2" fill="#ff3b30" stroke="#fff" stroke-width="2"/>
-      <circle cx="152" cy="35" r="4.2" fill="#ff3b30" stroke="#fff" stroke-width="2"/>
-      <circle cx="166" cy="10" r="4.2" fill="#ff3b30" stroke="#fff" stroke-width="2"/>
-      <text x="110" y="30" text-anchor="middle" font-size="16" font-weight="800" fill="#7a1b6d">R</text>
-    </svg>`,
-  },
-  {
-    id: "CATK" as const,
-    thumbSvg: `<svg viewBox="0 0 220 70" xmlns="http://www.w3.org/2000/svg">
-      <rect x="6" y="6" width="208" height="58" rx="10" fill="white" stroke="#d1d5db"/>
-      <path d="M40 35 L150 35" stroke="#7a1b6d" stroke-width="5" stroke-dasharray="9 6" stroke-linecap="round"/>
-      <path d="M150 35 L138 27" stroke="#7a1b6d" stroke-width="5" stroke-linecap="round"/>
-      <path d="M150 35 L138 43" stroke="#7a1b6d" stroke-width="5" stroke-linecap="round"/>
-      <text x="78" y="29" font-size="16" font-weight="800" fill="#7a1b6d">CATK</text>
-    </svg>`,
-  },
-];
 
 const DEFENSIVE = [
   {
@@ -389,7 +350,6 @@ function FormationGrid({ title, items }: FormationGridProps) {
       <div className="grid grid-cols-5 gap-3">
         {(items ?? []).map((it) => {
           const active = activeId === it.id;
-          const iconId = it.symbolCode ? `sidc:${it.symbolCode}` : it.id; 
           const previewSvg =
             it.svg?.trim()
               ? it.svg
@@ -404,14 +364,13 @@ function FormationGrid({ title, items }: FormationGridProps) {
               onClick={() =>
                 setTool({
                   kind: "place_formation_unit",
-                  iconId,
+                  iconId: it.id,
                   iconSize: it.iconSize ?? 1,
                   symbolCode: it.symbolCode ?? "",
                   shortName: it.shortName ?? "",
                   abbreviation: it.abbreviation ?? "",
                   fullName: it.fullName ?? "",
                   svg: it.svg ?? "",
-                  thumb: (it as any).thumb,
                 } as any)
               }
               className={[
@@ -427,16 +386,22 @@ function FormationGrid({ title, items }: FormationGridProps) {
                     draggable={false}
                   />
                 ) : it.svg ? (
-                  <div dangerouslySetInnerHTML={{ __html: it.svg }} />
+                  <div className="h-[96px] w-[96px] overflow-hidden flex items-center justify-center">
+                    <div
+                      className="w-full h-full [&>svg]:w-full [&>svg]:h-full [&>svg]:max-w-full [&>svg]:max-h-full [&>svg]:block"
+                      dangerouslySetInnerHTML={{ __html: it.svg }}
+                    />
+                  </div>
                 ) : it.symbolCode ? (
                   <div
                     dangerouslySetInnerHTML={{
-                      __html: sidcToSvg(it.symbolCode, { size: 40 }),
+                      __html: sidcToSvg(it.symbolCode, { size: 40 },),
                     }}
                   />
                 ) : (
                   <div className="h-full w-full rounded border border-gray-300" />
                 )}
+
               </div>
             </button>
           );
@@ -963,20 +928,44 @@ export default function Sidebar() {
                     onToggle={() => setOpenSection(openSection === key ? null : key)}
                   >
                     {key === "tasks" ? (
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-5 gap-2">
                         {TASKS.map((t) => {
-                          const active = tool.kind === "draw_task" && (tool as any).taskId === t.id;
+                          const active =
+                            tool.kind === "draw_task" && (tool as any).taskId === t.id;
+
                           return (
                             <button
                               key={t.id}
                               type="button"
-                              onClick={() => setTool({ kind: "draw_task", taskId: t.id })}
+                              onClick={() =>
+                                setTool({
+                                  kind: "draw_task",
+                                  taskId: t.id,
+                                  sidc: t.symbolCode,
+                                  shortName: t.shortName,
+                                  abbreviation: t.abbreviation,
+                                  fullName: t.fullName,
+                                } as any)
+                              }
                               className={[
-                                "rounded-lg border p-2 text-left hover:bg-gray-50",
-                                active ? "border-sky-500 bg-sky-50" : "border-gray-300",
+                                "flex flex-col items-center rounded-lg border bg-white p-1",
+                                active ? "border-sky-500 ring-2 ring-sky-200" : "border-gray-300 hover:bg-gray-50",
                               ].join(" ")}
+                              title={`Short Name: ${t.shortName}\nAbbreviation: ${t.abbreviation}\nFull Name: ${t.fullName}`}
                             >
-                              <div className="w-full" dangerouslySetInnerHTML={{ __html: t.thumbSvg }} />
+                              {t.thumbSvg ? (
+                                <div
+                                  className="flex h-[80px] w-full items-center justify-center overflow-hidden [&>svg]:h-full [&>svg]:w-full [&>svg]:block"
+                                  dangerouslySetInnerHTML={{ __html: t.thumbSvg }}
+                                />
+                              ) : (
+                                <div className="flex h-[80px] w-full items-center justify-center rounded border border-dashed border-gray-300 text-xs text-gray-400">
+                                  {t.abbreviation}
+                                </div>
+                              )}
+                              <div className="mt-1 w-full truncate text-center text-[10px] font-semibold text-gray-700">
+                                {t.shortName}
+                              </div>
                             </button>
                           );
                         })}

@@ -20,9 +20,7 @@ import MssSymbolEditor from "./MssSymbolEditor";
 import { sidcToSvg } from "@/lib/milsymbol";
 import { v4 as uuidv4 } from "uuid";
 
-/* =========================
-   Icon helpers
-========================= */
+
 async function svgToImageData(svg: string, size = 32) {
   const svg64 = btoa(unescape(encodeURIComponent(svg)));
   const imgSrc = `data:image/svg+xml;base64,${svg64}`;
@@ -49,14 +47,32 @@ async function svgToImageData(svg: string, size = 32) {
 }
 
 async function ensureIconFromSvg(map: Map, iconId: string, svg: string, size = 96) {
-  if (map.hasImage(iconId)) return;
+  const anyMap: any = map as any;
+  const has =
+    (typeof anyMap.hasImage === "function" && anyMap.hasImage(iconId)) ||
+    (typeof anyMap.getImage === "function" && !!anyMap.getImage(iconId)) ||
+    (anyMap.style && typeof anyMap.style.getImage === "function" && !!anyMap.style.getImage(iconId));
+
+  if (has) return;
+
   const data = await svgToImageData(svg, size);
   map.addImage(iconId, data, { pixelRatio: 2 });
 }
+function hasImageSafe(map: Map, id: string) {
+  const m: any = map as any;
 
-/* =========================
-   Sources & Layers
-========================= */
+  if (typeof m.hasImage === "function") return !!m.hasImage(id);
+
+  if (m.style && typeof m.style.getImage === "function") return !!m.style.getImage(id);
+
+  if (typeof m.listImages === "function") {
+    const imgs = m.listImages();
+    return Array.isArray(imgs) ? imgs.includes(id) : false;
+  }
+
+  return false;
+}
+
 function ensureSourcesAndLayers(map: Map) {
   if (!map.getSource("tac-src")) {
     map.addSource("tac-src", {
@@ -72,7 +88,6 @@ function ensureSourcesAndLayers(map: Map) {
     });
   }
 
-  // ✅ Selection box overlay
   if (!map.getSource("sel-src")) {
     map.addSource("sel-src", {
       type: "geojson",
@@ -125,6 +140,22 @@ function ensureSourcesAndLayers(map: Map) {
     });
   }
 
+  if (!map.getLayer("tac-symbol")) {
+    map.addLayer({
+      id: "tac-symbol",
+      type: "symbol",
+      source: "tac-src",
+      filter: ["==", ["get", "gkind"], "symbol"],
+      layout: {
+        "icon-image": ["get", "iconId"],
+        "icon-size": ["coalesce", ["get", "iconSize"], 1.4],
+        "icon-allow-overlap": true,
+        "icon-rotation-alignment": "map",
+        "icon-rotate": ["coalesce", ["get", "rot"], 0],
+      },
+    });
+  }
+
   // equipment symbols
   if (!map.getLayer("tac-equipment")) {
     map.addLayer({
@@ -137,12 +168,72 @@ function ensureSourcesAndLayers(map: Map) {
         "icon-size": ["coalesce", ["get", "iconSize"], 1.6],
         "icon-allow-overlap": true,
         "icon-rotation-alignment": "map",
-        // ✅ หมุนได้/ไม่ได้ จะควบคุมตอน UI ไม่ใช่ layer (layer รับค่าจาก rot ได้เหมือนเดิม)
         "icon-rotate": ["coalesce", ["get", "rot"], 0],
       },
     });
   }
 
+  if (!map.getLayer("tac-task-symbol")) {
+    map.addLayer({
+      id: "tac-task-symbol",
+      type: "symbol",
+      source: "tac-src",
+      filter: ["==", ["get", "gkind"], "tac_task_symbol"],
+      layout: {
+        "icon-image": ["get", "iconId"],
+        "icon-size": ["coalesce", ["get", "iconSize"], 0.6],
+        "icon-allow-overlap": true,
+        "icon-rotation-alignment": "map",
+        "icon-rotate": ["coalesce", ["get", "rot"], 0],
+      },
+    });
+  }
+  if (!map.getLayer("tac-task-sidc")) {
+    map.addLayer({
+      id: "tac-task-sidc",
+      type: "symbol",
+      source: "tac-src",
+      filter: ["==", ["get", "gkind"], "tactical_task_point"],
+      layout: {
+        "icon-image": ["get", "iconId"],
+        "icon-size": ["coalesce", ["get", "iconSize"], 1.0],
+        "icon-allow-overlap": true,
+        "icon-rotation-alignment": "map",
+      },
+    });
+  }
+  // task line (two-click draw) + repeat task symbol along the line
+if (!map.getLayer("tac-task-line")) {
+  map.addLayer({
+    id: "tac-task-line",
+    type: "line",
+    source: "tac-src",
+    filter: ["==", ["get", "gkind"], "tactical_task_line"],
+    paint: {
+      "line-color": ["coalesce", ["get", "color"], "#4DAAFF"],
+      "line-width": ["coalesce", ["get", "width"], 4],
+    },
+  });
+}
+
+if (!map.getLayer("tac-task-line-sidc")) {
+  map.addLayer({
+    id: "tac-task-line-sidc",
+    type: "symbol",
+    source: "tac-src",
+    filter: ["==", ["get", "gkind"], "tactical_task_line"],
+    layout: {
+      "symbol-placement": "line",
+      "symbol-spacing": 90, 
+      "icon-image": ["get", "iconId"],
+      "icon-size": ["coalesce", ["get", "iconSize"], 0.7],
+      "icon-allow-overlap": true,
+      "icon-ignore-placement": true,
+      "icon-rotation-alignment": "map",
+      "icon-pitch-alignment": "map",
+    },
+  });
+}
 }
 
 export default function MapCanvas() {

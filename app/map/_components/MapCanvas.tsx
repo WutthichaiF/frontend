@@ -20,93 +20,228 @@ import MssSymbolEditor from "./MssSymbolEditor";
 import { sidcToSvg } from "@/lib/milsymbol";
 import { v4 as uuidv4 } from "uuid";
 
-
+/* =========================
+   Icon helpers
+========================= */
 async function svgToImageData(svg: string, size = 32) {
-  const svg64 = btoa(unescape(encodeURIComponent(svg)));
-  const imgSrc = `data:image/svg+xml;base64,${svg64}`;
-
-  const img = document.createElement("img");
-  img.width = size;
-  img.height = size;
-
-  await new Promise<void>((resolve, reject) => {
-    img.onload = () => resolve();
-    img.onerror = () => reject(new Error("img load failed"));
-    img.src = imgSrc;
-  });
-
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-
-  const ctx = canvas.getContext("2d")!;
-  ctx.clearRect(0, 0, size, size);
-  ctx.drawImage(img, 0, 0, size, size);
-
-  return ctx.getImageData(0, 0, size, size);
+  const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = document.createElement("img");
+    img.width = size;
+    img.height = size;
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("img load failed"));
+      img.src = url;
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d")!;
+    ctx.clearRect(0, 0, size, size);
+    ctx.drawImage(img, 0, 0, size, size);
+    return ctx.getImageData(0, 0, size, size);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
-async function ensureIconFromSvg(map: Map, iconId: string, svg: string, size = 96) {
-  const anyMap: any = map as any;
-  const has =
-    (typeof anyMap.hasImage === "function" && anyMap.hasImage(iconId)) ||
-    (typeof anyMap.getImage === "function" && !!anyMap.getImage(iconId)) ||
-    (anyMap.style && typeof anyMap.style.getImage === "function" && !!anyMap.style.getImage(iconId));
-
-  if (has) return;
-
+export async function ensureIconFromSvg(
+  map: Map,
+  iconId: string,
+  svg: string,
+  size = 64
+) {
+  if (hasImageSafe(map, iconId)) return;
   const data = await svgToImageData(svg, size);
-  map.addImage(iconId, data, { pixelRatio: 2 });
+  try {
+    if (!map.hasImage(iconId)) map.addImage(iconId, data, { pixelRatio: 2 });
+  } catch (err) {
+    try {
+      (map as any).removeImage?.(iconId);
+    } catch {}
+    if (!hasImageSafe(map, iconId)) {
+      map.addImage(iconId, data, { pixelRatio: 2 });
+    }
+  }
 }
+
 function hasImageSafe(map: Map, id: string) {
   const m: any = map as any;
-
   if (typeof m.hasImage === "function") return !!m.hasImage(id);
-
-  if (m.style && typeof m.style.getImage === "function") return !!m.style.getImage(id);
-
   if (typeof m.listImages === "function") {
     const imgs = m.listImages();
     return Array.isArray(imgs) ? imgs.includes(id) : false;
   }
-
   return false;
 }
 
-function ensureSourcesAndLayers(map: Map) {
+/* =========================
+   Sources & Layers
+========================= */
+export function ensureSourcesAndLayers(map: Map) {
+  // ── sources ──
   if (!map.getSource("tac-src")) {
     map.addSource("tac-src", {
       type: "geojson",
       data: { type: "FeatureCollection", features: [] },
     });
   }
-
   if (!map.getSource("draw-src")) {
     map.addSource("draw-src", {
       type: "geojson",
       data: { type: "FeatureCollection", features: [] },
     });
   }
-
   if (!map.getSource("sel-src")) {
     map.addSource("sel-src", {
       type: "geojson",
       data: { type: "FeatureCollection", features: [] },
     });
   }
+
+  // ── draw preview layers (draw-src) ──
+  if (!map.getLayer("draw-lines")) {
+    map.addLayer({
+      id: "draw-lines",
+      type: "line",
+      source: "draw-src",
+      filter: ["==", ["get", "gkind"], "draw_line"],
+      paint: {
+        "line-color": ["coalesce", ["get", "color"], "#888888"],
+        "line-width": 3,
+        "line-dasharray": [5, 3],
+      },
+    });
+  }
+  if (!map.getLayer("draw-pts")) {
+    map.addLayer({
+      id: "draw-pts",
+      type: "circle",
+      source: "draw-src",
+      filter: ["==", ["get", "gkind"], "draw_pt"],
+      paint: {
+        "circle-radius": 5,
+        "circle-color": "#888888",
+        "circle-stroke-color": "white",
+        "circle-stroke-width": 1.5,
+      },
+    });
+  }
+
+  // ── selection box overlay ──
   if (!map.getLayer("sel-box")) {
     map.addLayer({
       id: "sel-box",
       type: "line",
       source: "sel-src",
       paint: {
-        "line-color": "#facc15", // yellow-400
+        "line-color": "#facc15",
         "line-width": 3,
       },
     });
   }
 
-  // commando icons
+  // ── defensive lines (gkind: "line") ──
+  if (!map.getLayer("tac-def-lines")) {
+    map.addLayer({
+      id: "tac-def-lines",
+      type: "line",
+      source: "tac-src",
+      filter: ["==", ["get", "gkind"], "line"],
+      paint: {
+        "line-color": ["coalesce", ["get", "color"], "#7a1b6d"],
+        "line-width": ["coalesce", ["get", "width"], 4],
+      },
+    });
+  }
+
+  // ── defensive pattern points (gkind: "def_pt") ──
+  if (!map.getLayer("tac-def-pts")) {
+    map.addLayer({
+      id: "tac-def-pts",
+      type: "symbol",
+      source: "tac-src",
+      filter: ["==", ["get", "gkind"], "def_pt"],
+      layout: {
+        "icon-image": [
+          "match",
+          ["get", "pt"],
+          "x",
+          "def-x",
+          "tick",
+          "def-tick",
+          "tooth",
+          "def-tooth",
+          "def-x",
+        ],
+        "icon-size": 1.0,
+        "icon-allow-overlap": true,
+        "icon-rotation-alignment": "map",
+        "icon-rotate": ["coalesce", ["get", "rot"], 0],
+      },
+    });
+  }
+
+  // ── task lines (gkind: "task_line") ──
+  if (!map.getLayer("tac-task-lines")) {
+    map.addLayer({
+      id: "tac-task-lines",
+      type: "line",
+      source: "tac-src",
+      filter: ["==", ["get", "gkind"], "task_line"],
+      layout: {
+        "line-cap": "round",
+        "line-join": "round",
+      },
+      paint: {
+        "line-color": ["coalesce", ["get", "color"], "#4DAAFF"],
+        "line-width": ["coalesce", ["get", "width"], 4],
+      },
+    });
+  }
+
+  // ── task labels (gkind: "task_label") ──
+  if (!map.getLayer("tac-task-label")) {
+    map.addLayer({
+      id: "tac-task-label",
+      type: "symbol",
+      source: "tac-src",
+      filter: ["==", ["get", "gkind"], "task_label"],
+      layout: {
+        "text-field": ["get", "text"],
+        "text-size": ["coalesce", ["get", "size"], 18],
+        "text-font": ["literal", ["Open Sans Bold", "Arial Unicode MS Bold"]],
+        "text-offset": [0, 0.0],
+        "text-anchor": "center",
+        "text-allow-overlap": true,
+      },
+      paint: {
+        "text-color": ["coalesce", ["get", "color"], "#4DAAFF"],
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 1.5,
+      },
+    });
+  }
+
+  // ── task control points (orange draggable dots) ──
+  if (!map.getLayer("tac-task-ctrl-pts")) {
+    map.addLayer({
+      id: "tac-task-ctrl-pts",
+      type: "circle",
+      source: "tac-src",
+      filter: ["==", ["get", "gkind"], "task_ctrl_pt"],
+      paint: {
+        "circle-radius": 7,
+        "circle-color": "#FF6B35",
+        "circle-stroke-color": "white",
+        "circle-stroke-width": 2.5,
+      },
+    });
+  }
+
+  // ── commando icons ──
   if (!map.getLayer("tac-commando")) {
     map.addLayer({
       id: "tac-commando",
@@ -123,7 +258,7 @@ function ensureSourcesAndLayers(map: Map) {
     });
   }
 
-  // formation units
+  // ── formation units ──
   if (!map.getLayer("tac-formation")) {
     map.addLayer({
       id: "tac-formation",
@@ -140,23 +275,7 @@ function ensureSourcesAndLayers(map: Map) {
     });
   }
 
-  if (!map.getLayer("tac-symbol")) {
-    map.addLayer({
-      id: "tac-symbol",
-      type: "symbol",
-      source: "tac-src",
-      filter: ["==", ["get", "gkind"], "symbol"],
-      layout: {
-        "icon-image": ["get", "iconId"],
-        "icon-size": ["coalesce", ["get", "iconSize"], 1.4],
-        "icon-allow-overlap": true,
-        "icon-rotation-alignment": "map",
-        "icon-rotate": ["coalesce", ["get", "rot"], 0],
-      },
-    });
-  }
-
-  // equipment symbols
+  // ── equipment symbols ──
   if (!map.getLayer("tac-equipment")) {
     map.addLayer({
       id: "tac-equipment",
@@ -173,6 +292,7 @@ function ensureSourcesAndLayers(map: Map) {
     });
   }
 
+  // ── tac_task_symbol ──
   if (!map.getLayer("tac-task-symbol")) {
     map.addLayer({
       id: "tac-task-symbol",
@@ -188,6 +308,8 @@ function ensureSourcesAndLayers(map: Map) {
       },
     });
   }
+
+  // ── tactical_task_point (SIDC icons) ──
   if (!map.getLayer("tac-task-sidc")) {
     map.addLayer({
       id: "tac-task-sidc",
@@ -199,43 +321,47 @@ function ensureSourcesAndLayers(map: Map) {
         "icon-size": ["coalesce", ["get", "iconSize"], 1.0],
         "icon-allow-overlap": true,
         "icon-rotation-alignment": "map",
+        "icon-rotate": ["coalesce", ["get", "rot"], 0],
       },
     });
   }
-  // task line (two-click draw) + repeat task symbol along the line
-if (!map.getLayer("tac-task-line")) {
-  map.addLayer({
-    id: "tac-task-line",
-    type: "line",
-    source: "tac-src",
-    filter: ["==", ["get", "gkind"], "tactical_task_line"],
-    paint: {
-      "line-color": ["coalesce", ["get", "color"], "#4DAAFF"],
-      "line-width": ["coalesce", ["get", "width"], 4],
-    },
-  });
+
+  // ── tactical_task_line (along-line icons) ──
+  if (!map.getLayer("tac-task-line")) {
+    map.addLayer({
+      id: "tac-task-line",
+      type: "line",
+      source: "tac-src",
+      filter: ["==", ["get", "gkind"], "tactical_task_line"],
+      paint: {
+        "line-color": ["coalesce", ["get", "color"], "#4DAAFF"],
+        "line-width": ["coalesce", ["get", "width"], 4],
+      },
+    });
+  }
+  if (!map.getLayer("tac-task-line-sidc")) {
+    map.addLayer({
+      id: "tac-task-line-sidc",
+      type: "symbol",
+      source: "tac-src",
+      filter: ["==", ["get", "gkind"], "tactical_task_line"],
+      layout: {
+        "symbol-placement": "line",
+        "symbol-spacing": 90,
+        "icon-image": ["get", "iconId"],
+        "icon-size": ["coalesce", ["get", "iconSize"], 0.7],
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true,
+        "icon-rotation-alignment": "map",
+        "icon-pitch-alignment": "map",
+      },
+    });
+  }
 }
 
-if (!map.getLayer("tac-task-line-sidc")) {
-  map.addLayer({
-    id: "tac-task-line-sidc",
-    type: "symbol",
-    source: "tac-src",
-    filter: ["==", ["get", "gkind"], "tactical_task_line"],
-    layout: {
-      "symbol-placement": "line",
-      "symbol-spacing": 90, 
-      "icon-image": ["get", "iconId"],
-      "icon-size": ["coalesce", ["get", "iconSize"], 0.7],
-      "icon-allow-overlap": true,
-      "icon-ignore-placement": true,
-      "icon-rotation-alignment": "map",
-      "icon-pitch-alignment": "map",
-    },
-  });
-}
-}
-
+/* =========================
+   MapCanvas component
+========================= */
 export default function MapCanvas() {
   const tac = useFeatureStore((s) => s.tac);
   const draw = useFeatureStore((s) => s.draw);
@@ -291,7 +417,9 @@ export default function MapCanvas() {
 
   const selectedFeature = useMemo(() => {
     if (!selectedId) return null;
-    return tacRef.current.features.find((f: any) => String(f?.properties?.id) === selectedId) as any;
+    return tacRef.current.features.find(
+      (f: any) => String(f?.properties?.id) === selectedId
+    ) as any;
   }, [selectedId, tac]);
 
   const selectedCanRotate = !!selectedFeature?.properties?.canRotate;
@@ -300,33 +428,27 @@ export default function MapCanvas() {
   const setSelectedBox = (id: string | null) => {
     const map = mapRef.current;
     if (!map) return;
-
     ensureSourcesAndLayers(map);
     const src = map.getSource("sel-src") as any;
     if (!src) return;
-
     if (!id) {
       src.setData({ type: "FeatureCollection", features: [] });
       return;
     }
-
-    const f = tacRef.current.features.find((x: any) => String(x?.properties?.id) === id) as any;
+    const f = tacRef.current.features.find(
+      (x: any) => String(x?.properties?.id) === id
+    ) as any;
     if (!f || f.geometry?.type !== "Point") {
       src.setData({ type: "FeatureCollection", features: [] });
       return;
     }
-
     const [lng, lat] = f.geometry.coordinates;
     const p = map.project({ lng, lat });
-
-    // ✅ ปรับขนาดกรอบไฮไลท์ได้ตรงนี้
     const half = 46;
-
     const tl = map.unproject([p.x - half, p.y - half]);
     const tr = map.unproject([p.x + half, p.y - half]);
     const br = map.unproject([p.x + half, p.y + half]);
     const bl = map.unproject([p.x - half, p.y + half]);
-
     src.setData({
       type: "FeatureCollection",
       features: [
@@ -361,14 +483,11 @@ export default function MapCanvas() {
     const map = mapRef.current;
     if (!map) return;
 
-    // กัน dblclick zoom เพราะเราใช้ dblclick เปิด editor
     map.doubleClickZoom.disable();
-
     let cleanups: Array<() => void> = [];
 
     const onLoad = async () => {
       ensureSourcesAndLayers(map);
-
       (map.getSource("tac-src") as any)?.setData(tacRef.current);
       (map.getSource("draw-src") as any)?.setData(drawRef.current);
 
@@ -404,7 +523,9 @@ export default function MapCanvas() {
     const PICK_LAYERS = ["tac-formation", "tac-commando", "tac-equipment"];
 
     const pick = (e: any) => {
-      const hits = map.queryRenderedFeatures(e.point, { layers: PICK_LAYERS as any });
+      const hits = map.queryRenderedFeatures(e.point, {
+        layers: PICK_LAYERS as any,
+      });
       const hit = hits?.[0] as any;
       if (!hit?.properties?.id) return null;
       return String(hit.properties.id);
@@ -413,7 +534,6 @@ export default function MapCanvas() {
     const onClick = async (e: any) => {
       const tool = useToolStore.getState().tool;
 
-      // ถ้ากำลังวาง/วาดอยู่ ไม่ต้อง select
       const busy =
         tool.kind === "draw_task" ||
         tool.kind === "draw_defensive" ||
@@ -430,59 +550,36 @@ export default function MapCanvas() {
       setSelectedBox(id);
 
       if (id) {
-        const f = tacRef.current.features.find((x: any) => String(x?.properties?.id) === id) as any;
+        const f = tacRef.current.features.find(
+          (x: any) => String(x?.properties?.id) === id
+        ) as any;
         setRotDeg(Number(f?.properties?.rot ?? 0));
       } else {
         setRotDeg(0);
       }
-      if (tool.kind === "place_formation_unit") {
-        const sidc = tool.symbolCode?.trim();
-        if (sidc) {
-          const iconId = makeIconId(sidc);
-          const svg = sidcToSvg(sidc, { size: 96 });
-          await ensureIconFromSvg(map, iconId, svg, 96);
-
-          const feat: any = {
-            type: "Feature",
-            geometry: { type: "Point", coordinates: [e.lngLat.lng, e.lngLat.lat] },
-            properties: {
-              gkind: "formation_unit",
-              id: uuidv4(),
-              iconId,
-              iconSize: tool.iconSize ?? 1.4,
-              symbolCode: sidc,
-              rot: 0,
-              canRotate: true,
-            },
-          };
-
-          setTac({ type: "FeatureCollection", features: [...tacRef.current.features, feat] });
-          return;
-        }
-
-        // fallback: ถ้าไม่มี sidc ค่อยไปใช้ svg/thumb แบบเดิม
-      }
     };
 
     map.on("click", onClick);
-    return () => { map.off("click", onClick); };
+    return () => {
+      map.off("click", onClick);
+    };
   }, []);
 
   /* ---------- keep box in place while moving map ---------- */
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-
     const onMove = () => {
       if (!selectedId) return;
       setSelectedBox(selectedId);
     };
-
     map.on("move", onMove);
-    return () => { map.off("move", onMove); }
+    return () => {
+      map.off("move", onMove);
+    };
   }, [selectedId]);
 
-  /* ---------- drag move selected ---------- */
+  /* ---------- drag move selected symbol ---------- */
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -491,8 +588,9 @@ export default function MapCanvas() {
 
     const onMouseDown = (e: any) => {
       if (!selectedId) return;
-
-      const hits = map.queryRenderedFeatures(e.point, { layers: DRAG_LAYERS as any });
+      const hits = map.queryRenderedFeatures(e.point, {
+        layers: DRAG_LAYERS as any,
+      });
       const hit = hits?.[0] as any;
       const id = String(hit?.properties?.id ?? "");
       if (!id || id !== selectedId) return;
@@ -507,13 +605,13 @@ export default function MapCanvas() {
       if (!isDraggingSymbolRef.current) return;
       const id = draggingIdRef.current;
       if (!id) return;
-
       updateFeatureById(id, (f) => ({
         ...f,
-        geometry: { type: "Point", coordinates: [e.lngLat.lng, e.lngLat.lat] },
+        geometry: {
+          type: "Point",
+          coordinates: [e.lngLat.lng, e.lngLat.lat],
+        },
       }));
-
-      // update highlight box realtime
       setSelectedBox(id);
     };
 
@@ -545,27 +643,27 @@ export default function MapCanvas() {
 
     const onDblClick = (e: any) => {
       e.preventDefault();
-
-      const hits = map.queryRenderedFeatures(e.point, { layers: EDIT_LAYERS as any });
+      const hits = map.queryRenderedFeatures(e.point, {
+        layers: EDIT_LAYERS as any,
+      });
       const hit = hits?.[0] as any;
       if (!hit?.properties?.id) return;
 
       const id = String(hit.properties.id);
-      const f = tacRef.current.features.find((x: any) => String(x?.properties?.id) === id) as any;
+      const f = tacRef.current.features.find(
+        (x: any) => String(x?.properties?.id) === id
+      ) as any;
       if (!f) return;
 
       setSelectedId(id);
       setSelectedBox(id);
-
       setEditorId(id);
       setEditorOpen(true);
-
       setEditorDraft({
         id,
         label: f.properties?.label ?? "",
         rot: Number(f.properties?.rot ?? 0),
         iconSize: Number(f.properties?.iconSize ?? 1.4),
-        // สำหรับ MSS / SIDC
         sidc: f.properties?.symbolCode ?? f.properties?.sidc ?? "",
         symbolCode: f.properties?.symbolCode ?? "",
         gkind: f.properties?.gkind ?? "",
@@ -574,7 +672,9 @@ export default function MapCanvas() {
     };
 
     map.on("dblclick", onDblClick);
-    return () => { map.off("dblclick", onDblClick); }
+    return () => {
+      map.off("dblclick", onDblClick);
+    };
   }, []);
 
   /* ---------- editor apply ---------- */
@@ -583,7 +683,6 @@ export default function MapCanvas() {
   const applyEditor = async () => {
     if (!editorId || !editorDraft) return;
 
-    // ถ้าแก้ SIDC → อัปเดตรูป (เป็น SVG)
     const nextSidc = editorDraft.symbolCode || editorDraft.sidc || "";
     if (nextSidc) {
       const map = mapRef.current;
@@ -599,22 +698,27 @@ export default function MapCanvas() {
             iconId,
             symbolCode: nextSidc,
             label: editorDraft.label ?? f.properties?.label,
-            iconSize: Number(editorDraft.iconSize ?? f.properties?.iconSize ?? 1.4),
-            // rot apply เฉพาะที่หมุนได้
-            rot: f.properties?.canRotate ? Number(editorDraft.rot ?? f.properties?.rot ?? 0) : (f.properties?.rot ?? 0),
+            iconSize: Number(
+              editorDraft.iconSize ?? f.properties?.iconSize ?? 1.4
+            ),
+            rot: f.properties?.canRotate
+              ? Number(editorDraft.rot ?? f.properties?.rot ?? 0)
+              : f.properties?.rot ?? 0,
           },
         }));
       }
-
     } else {
-      // ไม่มี sidc ก็อัปเดต label/iconSize/rot ตามเดิม
       updateFeatureById(editorId, (f) => ({
         ...f,
         properties: {
           ...f.properties,
           label: editorDraft.label ?? f.properties?.label,
-          iconSize: Number(editorDraft.iconSize ?? f.properties?.iconSize ?? 1.4),
-          rot: f.properties?.canRotate ? Number(editorDraft.rot ?? f.properties?.rot ?? 0) : (f.properties?.rot ?? 0),
+          iconSize: Number(
+            editorDraft.iconSize ?? f.properties?.iconSize ?? 1.4
+          ),
+          rot: f.properties?.canRotate
+            ? Number(editorDraft.rot ?? f.properties?.rot ?? 0)
+            : f.properties?.rot ?? 0,
         },
       }));
     }
@@ -627,7 +731,9 @@ export default function MapCanvas() {
   /* ---------- toolbar actions ---------- */
   const deleteSelected = () => {
     if (!selectedId) return;
-    const next = tacRef.current.features.filter((f: any) => String(f?.properties?.id) !== selectedId);
+    const next = tacRef.current.features.filter(
+      (f: any) => String(f?.properties?.id) !== selectedId
+    );
     setTac({ type: "FeatureCollection", features: next });
     setSelectedId(null);
     setSelectedBox(null);
@@ -648,13 +754,10 @@ export default function MapCanvas() {
       setSelectedBox(null);
       setRotDeg(0);
       useToolStore.getState().setTool({ kind: "none" } as any);
-
       setTac({ type: "FeatureCollection", features: [] });
       setDraw({ type: "FeatureCollection", features: [] });
-
       mapRef.current?.dragPan.enable();
     };
-
     window.addEventListener("map:clear", onClear);
     return () => window.removeEventListener("map:clear", onClear);
   }, []);
@@ -683,7 +786,6 @@ export default function MapCanvas() {
               <MdDelete size={22} className="text-red-500" />
             </button>
 
-            {/* Rotate: แสดงเฉพาะที่หมุนได้ */}
             {selectedCanRotate ? (
               <div className="ml-2 flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm">
                 <span className="text-xs text-gray-600">Rotate</span>
@@ -702,7 +804,9 @@ export default function MapCanvas() {
                   }}
                   className="w-32"
                 />
-                <span className="text-xs tabular-nums text-gray-700">{rotDeg}°</span>
+                <span className="text-xs tabular-nums text-gray-700">
+                  {rotDeg}°
+                </span>
               </div>
             ) : null}
           </div>
@@ -710,7 +814,11 @@ export default function MapCanvas() {
       ) : null}
 
       {/* map */}
-      <div ref={containerRef} className="h-full w-full" onContextMenu={(e) => e.preventDefault()} />
+      <div
+        ref={containerRef}
+        className="h-full w-full"
+        onContextMenu={(e) => e.preventDefault()}
+      />
 
       {/* MSS editor */}
       <MssSymbolEditor

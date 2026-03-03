@@ -459,6 +459,24 @@ function EquipmentGrid({ items, canRotate = true }: { items: any[]; canRotate?: 
   );
 }
 
+/** แก้ปัญหา SVG id ชนกันเวลา render หลายตัวในหน้าเดียว */
+function uniquifySvgIds(svg: string, prefix: string): string {
+  const idRegex = /\bid="([^"]+)"/g;
+  const ids: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = idRegex.exec(svg)) !== null) ids.push(m[1]);
+
+  let out = svg;
+  for (const id of ids) {
+    const newId = `${prefix}__${id}`;
+    out = out.replaceAll(`id="${id}"`, `id="${newId}"`);
+    out = out.replaceAll(`xlink:href="#${id}"`, `xlink:href="#${newId}"`);
+    out = out.replaceAll(`href="#${id}"`, `href="#${newId}"`);
+    out = out.replaceAll(`url(#${id})`, `url(#${newId})`);
+  }
+  return out;
+}
+
 export default function Sidebar() {
   const tool = useToolStore((s) => s.tool);
   const setTool = useToolStore((s) => s.setTool);
@@ -948,24 +966,16 @@ export default function Sidebar() {
                                 } as any)
                               }
                               className={[
-                                "flex flex-col items-center rounded-lg border bg-white p-1",
-                                active ? "border-sky-500 ring-2 ring-sky-200" : "border-gray-300 hover:bg-gray-50",
+                                "rounded-lg border bg-white p-2",
+                                active ? "border-sky-500 ring-2 ring-sky-200" : "border-gray-300",
                               ].join(" ")}
-                              title={`Short Name: ${t.shortName}\nAbbreviation: ${t.abbreviation}\nFull Name: ${t.fullName}`}
+                              title={`Short Name: ${t.shortName}\nAbbreviation: ${t.abbreviation}\nFull Name: ${t.fullName}\nSymbol Code: ${t.symbolCode}`}
                             >
-                              {t.thumbSvg ? (
-                                <div
-                                  className="flex h-[80px] w-full items-center justify-center overflow-hidden [&>svg]:h-full [&>svg]:w-full [&>svg]:block"
-                                  dangerouslySetInnerHTML={{ __html: t.thumbSvg }}
-                                />
-                              ) : (
-                                <div className="flex h-[80px] w-full items-center justify-center rounded border border-dashed border-gray-300 text-xs text-gray-400">
-                                  {t.abbreviation}
-                                </div>
-                              )}
-                              <div className="mt-1 w-full truncate text-center text-[10px] font-semibold text-gray-700">
-                                {t.shortName}
-                              </div>
+                              <div
+                                className="flex h-[110px] w-full items-center justify-center overflow-hidden
+                       [&>svg]:h-full [&>svg]:w-full [&>svg]:block"
+                                dangerouslySetInnerHTML={{ __html: uniquifySvgIds(t.thumbSvg, t.id) }}
+                              />
                             </button>
                           );
                         })}
